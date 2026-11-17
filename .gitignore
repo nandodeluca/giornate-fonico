@@ -1,0 +1,16 @@
+node_modules/
+www/
+desktop/www/
+desktop/dist/
+desktop/node_modules/
+android/app/build/
+android/build/
+android/.gradle/
+android/local.properties
+android/app/src/main/assets/public/
+android/capacitor-cordova-android-plugins/
+*.log
+.DS_Store
+# dati privati: mai nel repository
+private/
+servizi*.json

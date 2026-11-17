@@ -1,0 +1,25 @@
+{
+  "name": "giornate-fonico",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Giornate di lavoro e riepiloghi fatture per fonico freelance, dal calendario Google",
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "test": "node --test test/core.test.mjs",
+    "android:sync": "npm run build && npx cap sync android"
+  },
+  "dependencies": {
+    "@capacitor/android": "^8.0.0",
+    "@capacitor/browser": "^8.0.0",
+    "@capacitor/clipboard": "^8.0.0",
+    "@capacitor/core": "^8.0.0",
+    "@capacitor/filesystem": "^8.0.0",
+    "@capacitor/share": "^8.0.0",
+    "@capgo/capacitor-social-login": "^8.7.11"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^8.0.0",
+    "esbuild": "^0.25.0"
+  }
+}

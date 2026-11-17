@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Giornate Fonico</string>
+    <string name="title_activity_main">Giornate Fonico</string>
+    <string name="package_name">it.nandodeluca.giornate</string>
+    <string name="custom_url_scheme">it.nandodeluca.giornate</string>
+</resources>

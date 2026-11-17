@@ -1,0 +1,32 @@
+{
+  "name": "giornate-fonico-desktop",
+  "productName": "Giornate Fonico",
+  "version": "0.1.0",
+  "description": "Giornate Fonico per Windows",
+  "author": "Fernando De Luca",
+  "main": "main.js",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win nsis --publish never"
+  },
+  "devDependencies": {
+    "electron": "^45.0.0",
+    "electron-builder": "^26.0.0"
+  },
+  "build": {
+    "appId": "it.nandodeluca.giornate",
+    "productName": "Giornate Fonico",
+    "artifactName": "GiornateFonico-Setup-${version}.${ext}",
+    "files": ["main.js", "preload.js", "google.json", "www/**/*"],
+    "directories": { "output": "dist" },
+    "win": { "target": ["nsis"], "icon": "build/icon.png" },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "shortcutName": "Giornate Fonico"
+    }
+  }
+}
