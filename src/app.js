@@ -13,7 +13,13 @@ const $toast = document.getElementById('toast');
 const todayISO = () => C.toISODate(new Date());
 const thisMonth = () => todayISO().slice(0, 7);
 
+function lsGetStr(k, d) { try { return localStorage.getItem(k) || d; } catch { return d; } }
+function lsSetStr(k, v) { try { localStorage.setItem(k, v); } catch { /* niente */ } }
+function applyTheme() { document.documentElement.dataset.theme = lsGetStr('gf.theme', 'scuro'); }
+applyTheme();
+
 const ui = {
+  view: lsGetStr('gf.view', 'griglia'),
   tab: 'giornate',
   ym: thisMonth(),
   events: {},        // ym -> items
@@ -192,12 +198,21 @@ function viewDays(m) {
     ${m.sums.length ? `<div class="svc-strip">${m.sums.map(s => `<span class="chip"><span class="sw" style="background:${colorOf(s.service)}"></span>${esc(s.service.name)} · ${s.giornate} · ${esc(C.eur(s.compensi))}</span>`).join('')}</div>` : ''}
   </div>`;
   if (prev > 0) h += `<div class="note info">Di cui ${esc(C.eur(prev))} ancora previsti (giornate future: gli orari possono cambiare).</div>`;
+  h += `<div style="display:flex;justify-content:flex-end;margin:12px 0 8px"><div class="seg">
+    <button class="${ui.view === 'griglia' ? 'on' : ''}" data-act="view" data-id="griglia">Griglia</button>
+    <button class="${ui.view === 'elenco' ? 'on' : ''}" data-act="view" data-id="elenco">Elenco</button></div></div>`;
+  if (ui.view === 'griglia') {
+    h += viewGrid(m);
+    h += `<div class="legend"><span><i style="opacity:.55"></i>prevista</span><span><i style="box-shadow:inset 0 0 0 2px var(--warn)"></i>da controllare</span><span><i style="opacity:.3"></i>esclusa</span></div>`;
+  }
   if (check.length) {
     h += `<h2>Da controllare (${check.length})</h2><div class="card">${check.map(dayRow).join('')}</div>`;
   }
-  h += `<h2>Tutte le giornate</h2>`;
-  h += work.length || m.days.length ? `<div class="card">${m.days.map(dayRow).join('')}</div>`
-    : `<div class="card"><div class="empty"><b>Nessuna giornata di lavoro</b>Nessun evento del calendario corrisponde ai tuoi service in questo mese.</div></div>`;
+  if (ui.view === 'elenco') {
+    h += `<h2>Tutte le giornate</h2>`;
+    h += work.length || m.days.length ? `<div class="card">${m.days.map(dayRow).join('')}</div>`
+      : `<div class="card"><div class="empty"><b>Nessuna giornata di lavoro</b>Nessun evento del calendario corrisponde ai tuoi service in questo mese.</div></div>`;
+  }
   const others = m.others.filter(o => !o.ignored);
   if (others.length || m.others.length) {
     h += `<details class="more" ${ui.showOthers ? 'open' : ''} data-act="others"><summary>Altri eventi del mese non conteggiati (${m.others.length})</summary>
@@ -207,6 +222,63 @@ function viewDays(m) {
         <span class="muted">Assegna ›</span></button>`).join('')}</div></details>`;
   }
   return h;
+}
+
+const WD = ['lun', 'mar', 'mer', 'gio', 'ven', 'sab', 'dom'];
+
+function shortName(s) {
+  if (!s) return '?';
+  const n = String(s.name || '').trim();
+  const w = n.split(/\s+/)[0];
+  return w.length <= 9 ? w : w.slice(0, 8);
+}
+
+function viewGrid(m) {
+  const [y, mo] = ui.ym.split('-').map(Number);
+  const startDow = (new Date(y, mo - 1, 1).getDay() + 6) % 7;
+  const daysIn = new Date(y, mo, 0).getDate();
+  const total = Math.ceil((startDow + daysIn) / 7) * 7;
+  const byDate = new Map();
+  for (const d of m.days) {
+    if (!byDate.has(d.date)) byDate.set(d.date, []);
+    byDate.get(d.date).push(d);
+  }
+  const today = todayISO();
+  let cells = '';
+  for (let i = 0; i < total; i++) {
+    const dt = new Date(y, mo - 1, 1 - startDow + i);
+    const iso = C.toISODate(dt);
+    const out = dt.getMonth() !== mo - 1;
+    const we = i % 7 >= 5;
+    const list = out ? [] : (byDate.get(iso) || []);
+    const shown = list.slice(0, 3);
+    const chips = shown.map(d => {
+      const s = svcById(d.serviceId);
+      const cls = ['ev', d.status === 'prevista' ? 'prev' : '', d.status === 'controllare' ? 'chk' : '', d.escluso ? 'excl' : '', s ? '' : 'unk'].join(' ');
+      const amt = d.escluso ? '—' : `${Math.round(d.compenso + d.rimborsiTot)}€`;
+      const extra = d.escluso ? '' : d.tipo === 'doppia' ? '×2' : d.tipo === 'reperibilita' ? 'rep.' : d.otHours > 0 ? `+${d.otHours}h` : '';
+      return `<span class="${cls}" style="background:${colorOf(s)}" title="${esc(s?.name || '')}"><span class="nm">${esc(shortName(s))}</span><small><b>${esc(amt)}</b>${extra ? ` <i>${esc(extra)}</i>` : ''}</small></span>`;
+    }).join('');
+    const warn = list.some(d => d.status === 'controllare');
+    cells += `<button class="cell ${out ? 'out' : ''} ${we ? 'we' : ''} ${iso === today ? 'today' : ''}" data-act="cell" data-date="${iso}" ${out ? 'disabled' : ''}>
+      <span class="num">${dt.getDate()}</span>${chips}${list.length > 3 ? `<span class="more-n">+${list.length - 3}</span>` : ''}</button>`;
+  }
+  return `<div class="cal"><div class="cal-head">${WD.map(w => `<span>${w}</span>`).join('')}</div><div class="cal-grid">${cells}</div></div>`;
+}
+
+function openCell(date) {
+  const list = monthModel(ui.ym).days.filter(d => d.date === date);
+  if (!list.length) { toast('Nessun lavoro in questo giorno'); return; }
+  if (list.length === 1) { openDay(list[0].key); return; }
+  openSheet(`<h3 style="text-transform:capitalize">${esc(new Date(date + 'T12:00:00').toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long' }))}</h3>
+    <div class="sub">${list.length} lavori in questo giorno</div>
+    <div class="card">${list.map(dayRow).join('')}</div>
+    <div class="sheet-actions btn-row"><button class="btn" data-close-btn>Chiudi</button></div>`, sh => {
+    sh.addEventListener('click', e => {
+      const b = e.target.closest('[data-act=day]');
+      if (b) { closeSheet(); openDay(b.dataset.key); }
+    });
+  });
 }
 
 function viewNoServices() {
@@ -288,6 +360,12 @@ function viewMore() {
   return `<div class="card pad">
       <div><b>Account Google</b></div><div class="muted">${esc(store.meta.email)}</div>
       <div class="btn-row" style="margin-top:10px"><button class="btn" data-act="sync-all">Sincronizza ora</button><button class="btn danger" data-act="logout">Esci</button></div>
+    </div>
+    <h2>Aspetto</h2>
+    <div class="card pad">
+      <label class="field" style="margin-top:0"><span>Tema</span><select data-theme-sel>
+        ${[['scuro', 'Scuro'], ['chiaro', 'Chiaro'], ['sistema', 'Come Windows/Android']].map(([v, l]) => `<option value="${v}" ${lsGetStr('gf.theme', 'scuro') === v ? 'selected' : ''}>${l}</option>`).join('')}
+      </select></label>
     </div>
     <h2>Regole generali</h2>
     <div class="card pad">
@@ -634,6 +712,8 @@ function bind() {
     if (a === 'today') { ui.ym = thisMonth(); render(); loadMonth(ui.ym, { quiet: true }); return; }
     if (a === 'sync' || a === 'sync-all') { fullSync(); render(); return; }
     if (a === 'day') return openDay(b.dataset.key);
+    if (a === 'cell') return openCell(b.dataset.date);
+    if (a === 'view') { ui.view = b.dataset.id; lsSetStr('gf.view', ui.view); render(); return; }
     if (a === 'assign') return openAssign(b.dataset.ev);
     if (a === 'login') return doLogin();
     if (a === 'logout') {
@@ -668,6 +748,8 @@ function bind() {
       } catch (err) { toast('File non valido: ' + (err?.message || err)); }
       return;
     }
+    const th = e.target.closest('[data-theme-sel]');
+    if (th) { lsSetStr('gf.theme', th.value); applyTheme(); return; }
     const set = e.target.closest('[data-set]');
     if (set) {
       if (set.dataset.set === 'iva') setSettings({ iva: C.num(set.value) });
@@ -706,10 +788,13 @@ if (store.meta.email && isConfigured()) {
   fullSync();
 }
 doCheckUpdate(false);
-document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible' && store.meta.email) {
-    const c = cachedMonthEvents(ui.ym);
-    if (!c || Date.now() - c.at > 5 * 60 * 1000) fullSync();
-  }
-});
+// Rilegge il calendario quando torni sull'app (se è passato più di 1 minuto) e ogni 3 minuti mentre è aperta
+function refreshIfOld(maxAgeMs) {
+  if (!store.meta.email || ui.loading || document.visibilityState !== 'visible') return;
+  const c = cachedMonthEvents(ui.ym);
+  if (!c || Date.now() - c.at > maxAgeMs) fullSync();
+}
+document.addEventListener('visibilitychange', () => refreshIfOld(60 * 1000));
+window.addEventListener('focus', () => refreshIfOld(60 * 1000));
+setInterval(() => refreshIfOld(3 * 60 * 1000), 30 * 1000);
 setInterval(() => { if (store.meta.dirty && !store.syncing && store.meta.email) syncData().catch(() => {}); }, 60 * 1000);
