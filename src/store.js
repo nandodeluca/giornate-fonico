@@ -26,6 +26,18 @@ export const store = {
   lastError: null,
 };
 
+// Aggiornamenti dei dati salvati tra una versione e l'altra
+(function migrate() {
+  const st = store.data.settings || {};
+  if (!st.migr1) {
+    const ign = new Set((st.ignora || []).map(x => String(x).toLowerCase()));
+    ign.add('sost'); // "SOST" nel titolo = ho mandato un sostituto: non si conteggia
+    store.data.settings = { ...st, ignora: [...ign], migr1: true, updatedAt: Date.now() };
+    store.meta.dirty = true;
+    try { localStorage.setItem('gf.data', JSON.stringify(store.data)); } catch { /* niente */ }
+  }
+})();
+
 export function onChange(fn) { store.listeners.add(fn); }
 function emit() { for (const fn of store.listeners) fn(); }
 

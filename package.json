@@ -1,6 +1,6 @@
 {
   "name": "giornate-fonico",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "description": "Giornate di lavoro e riepiloghi fatture per fonico freelance, dal calendario Google",
   "type": "module",

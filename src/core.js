@@ -559,7 +559,7 @@ export function emptyData() {
     services: [],
     days: {},
     invoices: {},
-    settings: { iva: 22, ignora: [], updatedAt: 0 },
+    settings: { iva: 22, ignora: ['sost'], migr1: true, updatedAt: 0 },
   };
 }
 
