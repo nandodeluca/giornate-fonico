@@ -57,7 +57,7 @@ body {
 button, input, select, textarea { font: inherit; color: inherit; }
 button { cursor: pointer; }
 
-#app { max-width: 920px; margin: 0 auto; padding: 0 0 calc(76px + env(safe-area-inset-bottom)); }
+#app { max-width: 1400px; margin: 0 auto; padding: 0 0 calc(76px + env(safe-area-inset-bottom)); }
 
 /* testata */
 .top {
@@ -84,7 +84,7 @@ button { cursor: pointer; }
   display: flex; justify-content: center;
   padding-bottom: env(safe-area-inset-bottom);
 }
-.tabs-inner { display: flex; width: 100%; max-width: 920px; }
+.tabs-inner { display: flex; width: 100%; max-width: 1400px; }
 .tab {
   flex: 1; border: 0; background: none; padding: 9px 4px 10px; font-size: 12px; color: var(--muted);
   display: flex; flex-direction: column; align-items: center; gap: 2px; position: relative;
@@ -299,3 +299,23 @@ details.more > summary { cursor: pointer; color: var(--muted); font-size: 13.5px
   .cell .ev small { font-size: 11px; line-height: 1.25; text-overflow: clip; }
   .cell .ev small i { display: block; font-size: 10px; }
 }
+
+.cal-grid.fit .cell { min-height: 0; overflow: hidden; }
+.cal-grid.fit .more-n { margin-top: auto; }
+
+.cal-grid.compact .cell { padding: 2px 3px; gap: 1px; }
+.cal-grid.compact .cell .num { font-size: 11.5px; line-height: 1.2; }
+.cal-grid.compact .ev { padding: 0 4px; font-size: 11px; line-height: 17px; height: 17px; }
+.cal-grid.compact .ev .nm { display: none; }
+.cal-grid.compact .ev small { display: inline; font-size: 11px; }
+.cal-grid.compact .ev small i { display: inline; }
+.seg button { padding: 5px 12px; }
+
+@media (max-height: 640px) and (min-width: 560px) {
+  .prev-note { display: none; }
+  .kpi { padding: 7px 10px; }
+  .kpi .v { font-size: 17px; }
+  .svc-strip { padding: 6px 12px 8px; }
+}
+
+.cal-grid.compact.wide .ev .nm { display: inline; margin-right: 5px; }

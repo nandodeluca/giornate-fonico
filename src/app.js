@@ -125,7 +125,46 @@ function render() {
       ${tabBtn('altro', '⚙', 'Altro', 0)}
     </div></nav>`;
   bind();
+  fitGrid();
 }
+
+// Adatta l'altezza delle righe della griglia allo spazio libero della finestra
+function fitGrid() {
+  const g = $app.querySelector('.cal-grid');
+  if (!g) return;
+  const weeks = Math.max(1, Math.round(g.children.length / 7));
+  const tabs = document.querySelector('.tabs');
+  const tabsH = tabs ? tabs.getBoundingClientRect().height : 0;
+  const legend = $app.querySelector('.legend');
+  const legendH = legend ? legend.getBoundingClientRect().height + 10 : 0;
+  const top = g.getBoundingClientRect().top + window.scrollY;
+  const avail = window.innerHeight - top - tabsH - legendH - 14;
+  const minRow = window.innerWidth < 560 ? 56 : 33;
+  const row = Math.max(minRow, Math.floor(avail / weeks));
+  g.style.gridAutoRows = `${row}px`;
+  g.classList.add('fit');
+  // finestra bassa: etichette su una riga sola (importo), senza nome
+  const compact = window.innerWidth >= 560 && row < 64;
+  g.classList.toggle('compact', compact);
+  g.classList.toggle('wide', g.clientWidth / 7 >= 125);
+  if (legend) legend.style.display = compact ? 'none' : '';
+  // quante etichette stanno in una cella
+  const chipH = compact ? 19 : (window.innerWidth < 560 ? 30 : 32);
+  const per = Math.max(1, Math.floor((row - 21) / chipH));
+  for (const cell of g.children) {
+    const evs = cell.querySelectorAll('.ev');
+    let hidden = 0;
+    evs.forEach((ev, i) => { const h = i >= per; ev.style.display = h ? 'none' : ''; if (h) hidden++; });
+    const extra = Number(cell.dataset.more || 0) + hidden;
+    let m = cell.querySelector('.more-n');
+    if (extra > 0) {
+      if (!m) { m = document.createElement('span'); m.className = 'more-n'; cell.appendChild(m); }
+      m.textContent = `+${extra}`;
+    } else if (m) m.remove();
+  }
+}
+let fitTimer = null;
+window.addEventListener('resize', () => { clearTimeout(fitTimer); fitTimer = setTimeout(fitGrid, 60); });
 
 function tabBtn(id, ic, label, n) {
   return `<button class="tab ${ui.tab === id ? 'on' : ''}" data-act="tab" data-id="${id}"><span class="ic">${ic}</span>${label}${n ? `<span class="dot">${n}</span>` : ''}</button>`;
@@ -197,8 +236,8 @@ function viewDays(m) {
     </div>
     ${m.sums.length ? `<div class="svc-strip">${m.sums.map(s => `<span class="chip"><span class="sw" style="background:${colorOf(s.service)}"></span>${esc(s.service.name)} · ${s.giornate} · ${esc(C.eur(s.compensi))}</span>`).join('')}</div>` : ''}
   </div>`;
-  if (prev > 0) h += `<div class="note info">Di cui ${esc(C.eur(prev))} ancora previsti (giornate future: gli orari possono cambiare).</div>`;
-  h += `<div style="display:flex;justify-content:flex-end;margin:12px 0 8px"><div class="seg">
+  if (prev > 0) h += `<div class="note info prev-note">Di cui ${esc(C.eur(prev))} ancora previsti (giornate future: gli orari possono cambiare).</div>`;
+  h += `<div style="display:flex;justify-content:flex-end;margin:8px 0 6px"><div class="seg">
     <button class="${ui.view === 'griglia' ? 'on' : ''}" data-act="view" data-id="griglia">Griglia</button>
     <button class="${ui.view === 'elenco' ? 'on' : ''}" data-act="view" data-id="elenco">Elenco</button></div></div>`;
   if (ui.view === 'griglia') {
@@ -251,7 +290,7 @@ function viewGrid(m) {
     const out = dt.getMonth() !== mo - 1;
     const we = i % 7 >= 5;
     const list = out ? [] : (byDate.get(iso) || []);
-    const shown = list.slice(0, 3);
+    const shown = list.slice(0, 6);
     const chips = shown.map(d => {
       const s = svcById(d.serviceId);
       const cls = ['ev', d.status === 'prevista' ? 'prev' : '', d.status === 'controllare' ? 'chk' : '', d.escluso ? 'excl' : '', s ? '' : 'unk'].join(' ');
@@ -260,8 +299,8 @@ function viewGrid(m) {
       return `<span class="${cls}" style="background:${colorOf(s)}" title="${esc(s?.name || '')}"><span class="nm">${esc(shortName(s))}</span><small><b>${esc(amt)}</b>${extra ? ` <i>${esc(extra)}</i>` : ''}</small></span>`;
     }).join('');
     const warn = list.some(d => d.status === 'controllare');
-    cells += `<button class="cell ${out ? 'out' : ''} ${we ? 'we' : ''} ${iso === today ? 'today' : ''}" data-act="cell" data-date="${iso}" ${out ? 'disabled' : ''}>
-      <span class="num">${dt.getDate()}</span>${chips}${list.length > 3 ? `<span class="more-n">+${list.length - 3}</span>` : ''}</button>`;
+    cells += `<button class="cell ${out ? 'out' : ''} ${we ? 'we' : ''} ${iso === today ? 'today' : ''}" data-act="cell" data-date="${iso}" data-more="${Math.max(0, list.length - 6)}" ${out ? 'disabled' : ''}>
+      <span class="num">${dt.getDate()}</span>${chips}</button>`;
   }
   return `<div class="cal"><div class="cal-head">${WD.map(w => `<span>${w}</span>`).join('')}</div><div class="cal-grid">${cells}</div></div>`;
 }
