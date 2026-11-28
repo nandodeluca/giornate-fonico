@@ -127,6 +127,9 @@ function render() {
         <button class="icon-btn" data-act="prev" aria-label="Mese precedente">‹</button>
         <div class="month" data-act="today">${esc(C.monthLabel(ui.ym))}</div>
         <button class="icon-btn" data-act="next" aria-label="Mese successivo">›</button>
+        ${ui.tab === 'giornate' ? `<div class="seg seg-top">
+          <button class="${ui.view === 'griglia' ? 'on' : ''}" data-act="view" data-id="griglia" title="Griglia"><span class="lbl">Griglia</span><span class="ico">▦</span></button>
+          <button class="${ui.view === 'elenco' ? 'on' : ''}" data-act="view" data-id="elenco" title="Elenco"><span class="lbl">Elenco</span><span class="ico">≣</span></button></div>` : ''}
         <button class="icon-btn" data-act="sync" aria-label="Aggiorna">${ui.loading || store.syncing ? '…' : '↻'}</button>
       </div>` : `<div class="top-row"><button class="icon-btn" data-act="menu" aria-label="Menù">☰</button><div class="month">${ui.tab === 'service' ? 'Service' : 'Impostazioni'}</div><span style="width:40px"></span></div>`}
       <div class="sync-line">${syncLine()}</div>
@@ -248,12 +251,15 @@ function viewDays(m) {
       <div class="kpi"><div class="v">${esc(C.eur(tot))}</div><div class="l">compensi (senza IVA)</div></div>
       <div class="kpi"><div class="v">${esc(C.eur(rimb))}</div><div class="l">rimborsi</div></div>
     </div>
-    ${m.sums.length ? `<div class="svc-strip">${m.sums.map(s => `<span class="chip"><span class="sw" style="background:${colorOf(s.service)}"></span>${esc(s.service.name)} · ${s.giornate} · ${esc(C.eur(s.compensi))}</span>`).join('')}</div>` : ''}
+    ${m.sums.length ? `<div class="svc-strip">${m.sums.map(s => {
+      const prevS = s.days.filter(d => d.status === 'prevista').reduce((a, d) => a + d.compenso, 0);
+      const fatto = s.compensi - prevS;
+      return `<span class="chip chip2"><span class="sw" style="background:${colorOf(s.service)}"></span>
+        <span><span class="c-name">${esc(s.service.name)} · ${s.giornate} gg</span>
+        <span class="c-amt">${esc(C.eur(fatto))}${prevS ? ` <small>+ ${esc(C.eur(prevS))} previsti</small>` : ''}</span></span></span>`;
+    }).join('')}</div>` : ''}
   </div>`;
-  if (prev > 0) h += `<div class="note info prev-note">Di cui ${esc(C.eur(prev))} ancora previsti (giornate future: gli orari possono cambiare).</div>`;
-  h += `<div style="display:flex;justify-content:flex-end;margin:8px 0 6px"><div class="seg">
-    <button class="${ui.view === 'griglia' ? 'on' : ''}" data-act="view" data-id="griglia">Griglia</button>
-    <button class="${ui.view === 'elenco' ? 'on' : ''}" data-act="view" data-id="elenco">Elenco</button></div></div>`;
+  h += '<div style="height:10px"></div>';
   if (ui.view === 'griglia') {
     h += viewGrid(m);
     h += `<div class="legend"><span><i style="opacity:.55"></i>prevista</span><span><i style="box-shadow:inset 0 0 0 2px var(--warn)"></i>da controllare</span><span><i style="opacity:.3"></i>esclusa</span></div>`;

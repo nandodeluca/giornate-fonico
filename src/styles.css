@@ -319,3 +319,22 @@ details.more > summary { cursor: pointer; color: var(--muted); font-size: 13.5px
 }
 
 .cal-grid.compact.wide .ev .nm { display: inline; margin-right: 5px; }
+
+/* riquadri service: lavorato + previsto */
+.chip.chip2 { border-radius: 10px; padding: 6px 12px 6px 10px; align-items: flex-start; white-space: normal; }
+.chip.chip2 .sw { margin-top: 5px; }
+.chip.chip2 .c-name { display: block; font-size: 12px; color: var(--muted); font-weight: 600; }
+.chip.chip2 .c-amt { display: block; font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.chip.chip2 .c-amt small { font-size: 12px; font-weight: 500; color: var(--muted); }
+/* Griglia / Elenco nella barra in alto */
+.seg-top { flex: none; }
+.seg-top button { padding: 0 11px; height: 40px; }
+.seg-top .ico { display: none; font-size: 16px; }
+@media (max-width: 560px) {
+  .seg-top .lbl { display: none; }
+  .seg-top .ico { display: inline; }
+  .seg-top button { padding: 0 9px; }
+  .top-row { gap: 5px; }
+  .top-row .icon-btn { width: 36px; }
+  .month { font-size: 16px; }
+}
