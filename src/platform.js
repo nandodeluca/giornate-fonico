@@ -6,6 +6,7 @@ import { Share } from '@capacitor/share';
 import { Clipboard } from '@capacitor/clipboard';
 import { Browser } from '@capacitor/browser';
 import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
+import { App } from '@capacitor/app';
 import { CONFIG, SCOPES } from './config.js';
 
 const desktop = typeof window !== 'undefined' ? window.desktop : null;
@@ -169,3 +170,11 @@ export const coop = PLATFORM === 'windows' ? {
   forget: () => desktop.coopForget(),
   fetchPage: (which, da, a) => desktop.coopFetch(which, da, a),
 } : null;
+
+// Tasto "indietro" di Android: la funzione restituisce true se ha gestito il tasto
+export function onBackButton(handler) {
+  if (PLATFORM !== 'android') return;
+  App.addListener('backButton', () => {
+    if (!handler()) App.minimizeApp();
+  });
+}

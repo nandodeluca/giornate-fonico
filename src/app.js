@@ -4,7 +4,7 @@ import {
   store, onChange, setMeta, fetchMonthEvents, cachedMonthEvents, syncData, updateDay, resetDay,
   saveService, deleteService, setInvoice, setSettings, importFile, exportBackup, clearLocal, checkUpdate, syncCoop,
 } from './store.js';
-import { PLATFORM, APP_VERSION, signIn, signOut, isConfigured, shareText, copyText, openExternal, saveTextFile, coop } from './platform.js';
+import { PLATFORM, APP_VERSION, signIn, signOut, isConfigured, shareText, copyText, openExternal, saveTextFile, coop, onBackButton } from './platform.js';
 
 const $app = document.getElementById('app');
 const $sheet = document.getElementById('sheet-root');
@@ -329,6 +329,34 @@ function viewGrid(m) {
       <span class="num">${dt.getDate()}</span>${chips}</button>`;
   }
   return `<div class="cal"><div class="cal-head">${WD.map(w => `<span>${w}</span>`).join('')}</div><div class="cal-grid">${cells}</div></div>`;
+}
+
+// Scorrere col dito sul calendario: a sinistra mese dopo, a destra mese prima
+function bindSwipe() {
+  const area = $app.querySelector('.cal') || (ui.tab === 'giornate' && !ui.page ? $app.querySelector('main') : null);
+  if (!area) return;
+  let x0 = null, y0 = null, t0 = 0;
+  area.addEventListener('touchstart', e => {
+    if (e.touches.length !== 1) { x0 = null; return; }
+    x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; t0 = Date.now();
+  }, { passive: true });
+  area.addEventListener('touchend', e => {
+    if (x0 == null) return;
+    const t = e.changedTouches[0];
+    const dx = t.clientX - x0, dy = t.clientY - y0;
+    x0 = null;
+    if (Math.abs(dx) < 60 || Math.abs(dx) < Math.abs(dy) * 1.5 || Date.now() - t0 > 800) return;
+    goMonth(dx < 0 ? 1 : -1);
+  }, { passive: true });
+}
+
+function goMonth(n) {
+  ui.ym = shiftYM(ui.ym, n);
+  render();
+  const cal = $app.querySelector('.cal');
+  if (cal) cal.animate([{ transform: `translateX(${n > 0 ? 40 : -40}px)`, opacity: 0.3 }, { transform: 'none', opacity: 1 }], { duration: 180, easing: 'ease-out' });
+  const c = cachedMonthEvents(ui.ym);
+  if (!c || Date.now() - c.at > 60 * 1000) loadMonth(ui.ym, { quiet: !!c });
 }
 
 function openCell(date) {
@@ -1066,12 +1094,7 @@ function bind() {
       try { await copyText(b.dataset.text); toast('Elenco copiato: incollalo nella mail'); } catch (err) { toast('Non riuscito: ' + (err?.message || err)); }
       return;
     }
-    if (a === 'prev' || a === 'next') {
-      ui.ym = shiftYM(ui.ym, a === 'prev' ? -1 : 1); render();
-      const c = cachedMonthEvents(ui.ym);
-      if (!c || Date.now() - c.at > 60 * 1000) loadMonth(ui.ym, { quiet: !!c });
-      return;
-    }
+    if (a === 'prev' || a === 'next') { goMonth(a === 'prev' ? -1 : 1); return; }
     if (a === 'today') { ui.ym = thisMonth(); render(); loadMonth(ui.ym, { quiet: true }); return; }
     if (a === 'sync' || a === 'sync-all') { fullSync(); render(); return; }
     if (a === 'day') return openDay(b.dataset.key);
@@ -1122,6 +1145,7 @@ function bind() {
       toast('Salvato');
     }
   };
+  bindSwipe();
   const box = $app.querySelector('#coop-box');
   if (box && coop) renderCoopBox(box);
   const det = $app.querySelector('details[data-act=others]');
@@ -1146,6 +1170,15 @@ async function doCheckUpdate(manual) {
     else if (manual) toast('Hai già l\'ultima versione');
   } catch (e) { if (manual) toast('Controllo non riuscito: ' + (e?.message || e)); }
 }
+
+// ---------- tasto indietro (Android) ----------
+onBackButton(() => {
+  if ($sheet.innerHTML) { closeSheet(); render(); return true; }
+  if (ui.page) { ui.page = null; render(); return true; }
+  if (ui.tab !== 'giornate') { ui.tab = 'giornate'; render(); return true; }
+  if (ui.ym !== thisMonth()) { ui.ym = thisMonth(); render(); return true; }
+  return false; // nella schermata principale: l'app va in secondo piano
+});
 
 // ---------- avvio ----------
 
