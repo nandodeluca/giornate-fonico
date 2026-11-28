@@ -51,6 +51,16 @@ export const store = {
     store.meta.dirty = true;
     try { localStorage.setItem('gf.data', JSON.stringify(store.data)); } catch { /* niente */ }
   }
+  const st4 = store.data.settings || {};
+  if (!st4.migr4) {
+    // Concerti: voce a parte, riconosciuta dal colore Mirtillo (blu)
+    if (!store.data.services.some(x => x.tipo === 'concerti' && !x.deleted)) {
+      store.data.services.push({ id: 'concerti', order: 99, name: 'CONCERTI', colorId: '9', keywords: ['concerto'], tipo: 'concerti', tariffa: '', updatedAt: Date.now() });
+    }
+    store.data.settings = { ...store.data.settings, migr4: true, updatedAt: Date.now() };
+    store.meta.dirty = true;
+    try { localStorage.setItem('gf.data', JSON.stringify(store.data)); } catch { /* niente */ }
+  }
   const st3 = store.data.settings || {};
   if (!st3.migr3) {
     // stima della trattenuta della cooperativa indicata da Fernando

@@ -1,4 +1,4 @@
-# Giornate Fonico
+# Cachet
 
 App per Windows e Android che legge le giornate di lavoro dal calendario Google
 (colori e titoli di One Calendar), calcola compensi, straordinari, doppie e rimborsi
@@ -28,8 +28,8 @@ secondo le regole di ogni service e prepara il riepilogo mensile per la fattura.
 
 Le versioni sono nella pagina **Releases** del repository:
 
-- **Android:** scarica `GiornateFonico-x.y.z.apk` dal telefono e aprilo.
-- **Windows:** scarica `GiornateFonico-Setup-x.y.z.exe` e avvialo
+- **Android:** scarica `Cachet-x.y.z.apk` dal telefono e aprilo.
+- **Windows:** scarica `Cachet-Setup-x.y.z.exe` e avvialo
   (se compare "Windows ha protetto il PC": *Ulteriori informazioni* → *Esegui comunque*).
 
 All'apertura l'app avvisa quando c'è una versione nuova.

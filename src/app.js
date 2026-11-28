@@ -106,12 +106,13 @@ function render() {
   if (ui.page === 'prospetto') body = viewForecast();
   else if (ui.page === 'pagamenti') body = viewPayments();
   else if (ui.page === 'enpals') body = viewEnpals();
+  else if (ui.page === 'concerti') body = viewConcerts();
   else if (ui.tab === 'giornate') body = viewDays(m);
   else if (ui.tab === 'fatture') body = viewInvoices(m);
   else if (ui.tab === 'service') body = viewServices();
   else body = viewMore();
   const showMonth = !ui.page && (ui.tab === 'giornate' || ui.tab === 'fatture');
-  const PAGE_TITLES = { prospetto: 'Prospetto incassi', pagamenti: 'Pagamenti fatture', enpals: 'Giornate ENPALS' };
+  const PAGE_TITLES = { prospetto: 'Prospetto incassi', pagamenti: 'Pagamenti fatture', enpals: 'Giornate ENPALS', concerti: 'Concerti' };
   $app.innerHTML = `
     ${ui.update ? `<div class="update"><span class="grow">Nuova versione <b>${esc(ui.update.version)}</b> disponibile</span><button class="btn small" data-act="get-update">Scarica</button></div>` : ''}
     ${store.meta.needLogin ? `<div class="update"><span class="grow">Google chiede di confermare di nuovo l'accesso</span><button class="btn small" data-act="login">Accedi</button></div>` : ''}
@@ -198,15 +199,15 @@ function syncLine() {
 }
 
 function viewNotConfigured() {
-  return `<div class="login"><div class="box"><div class="logo">G</div><h1>Quasi pronta</h1>
+  return `<div class="login"><div class="box"><div class="logo">♪</div><h1>Quasi pronta</h1>
     <p>Questa versione dell'app non ha ancora i codici del progetto Google Cloud. Arriveranno con il prossimo aggiornamento.</p>
     <p class="muted">Versione ${esc(APP_VERSION)} · ${esc(PLATFORM)}</p></div></div>`;
 }
 
 function viewLogin() {
   return `<div class="login"><div class="box">
-    <div class="logo">G</div>
-    <h1>Giornate Fonico</h1>
+    <div class="logo">♪</div>
+    <h1>Cachet</h1>
     <p>Accedi con il tuo account Google: l'app legge il calendario (solo lettura) e salva i suoi dati in una cartella nascosta del tuo Drive, così PC e telefono restano allineati.</p>
     <button class="btn primary block" data-act="login" style="margin-top:14px">Accedi con Google</button>
     <p class="muted" style="font-size:12.5px;margin-top:16px">Versione ${esc(APP_VERSION)}</p>
@@ -230,7 +231,7 @@ function dayRow(d) {
   return `<button class="day ${d.escluso ? 'excluded' : ''}" data-act="day" data-key="${esc(d.key)}">
     <span class="bar" style="background:${colorOf(s)}"></span>
     <span class="body">
-      <span class="t1"><span class="date">${esc(C.dateLabel(d.date))}</span><span class="name">${esc(d.serviceName || 'Service ?')}${d.place ? ` · ${esc(d.place)}` : ''}</span></span>
+      <span class="t1"><span class="date">${esc(C.dateLabel(d.date))}</span><span class="name">${d.concerto ? '♪ ' + esc(d.place || 'Concerto') : `${esc(d.serviceName || 'Service ?')}${d.place ? ` · ${esc(d.place)}` : ''}`}</span></span>
       <span class="t2 calc">${esc(orario)}${extra.length ? ' · ' + esc(extra.join(' · ')) : ''}</span>
       ${d.status === 'controllare' ? `<span class="t3">${esc(d.issues[0]?.text || '')}${d.issues.length > 1 ? ` (+${d.issues.length - 1})` : ''}</span>` : ''}
     </span>
@@ -243,7 +244,8 @@ function viewDays(m) {
   if (!m.hasEvents && ui.loading) return `<div class="empty">Leggo il calendario…</div>`;
   const tot = m.sums.reduce((a, s) => a + s.compensi, 0);
   const rimb = m.sums.reduce((a, s) => a + s.rimborsi, 0);
-  const work = m.days.filter(d => !d.escluso && !d.opzione);
+  const work = m.days.filter(d => !d.escluso && !d.opzione && !d.concerto);
+  const conc = C.concertSummary(m.days)[0];
   const prev = work.filter(d => d.status === 'prevista').reduce((a, d) => a + d.compenso, 0);
   const check = m.days.filter(d => d.status === 'controllare');
   let h = `<div class="card">
@@ -258,7 +260,9 @@ function viewDays(m) {
       return `<span class="chip chip2"><span class="sw" style="background:${colorOf(s.service)}"></span>
         <span><span class="c-name">${esc(s.service.name)} · ${s.giornate} gg</span>
         <span class="c-amt">${esc(C.eur(fatto))}${prevS ? ` <small>+ ${esc(C.eur(prevS))} previsti</small>` : ''}</span></span></span>`;
-    }).join('')}</div>` : ''}
+    }).join('')}${conc ? `<span class="chip chip2"><span class="sw" style="background:${colorOf(services().find(x => x.tipo === 'concerti'))}"></span>
+        <span><span class="c-name">CONCERTI · ${conc.concerti.length} · a parte</span><span class="c-amt">${esc(C.eur(conc.totale))}${conc.senzaCifra ? ` <small>${conc.senzaCifra} senza cifra</small>` : ''}</span></span></span>` : ''}</div>` : (conc ? `<div class="svc-strip"><span class="chip chip2"><span class="sw" style="background:${colorOf(services().find(x => x.tipo === 'concerti'))}"></span>
+        <span><span class="c-name">CONCERTI · ${conc.concerti.length} · a parte</span><span class="c-amt">${esc(C.eur(conc.totale))}</span></span></span></div>` : '')}
   </div>`;
   h += '<div style="height:10px"></div>';
   if (ui.view === 'griglia') {
@@ -315,9 +319,10 @@ function viewGrid(m) {
     const chips = shown.map(d => {
       const s = svcById(d.serviceId);
       const cls = ['ev', d.status === 'prevista' ? 'prev' : '', d.status === 'controllare' ? 'chk' : '', d.escluso ? 'excl' : '', d.opzione ? 'opt' : '', s ? '' : 'unk'].join(' ');
-      const amt = d.escluso ? '—' : d.opzione ? '???' : `${Math.round(d.compenso + d.rimborsiTot)}€`;
+      const amt = d.escluso ? '—' : d.opzione ? '???' : d.concerto && !d.compenso ? '€ ?' : `${Math.round(d.compenso + d.rimborsiTot)}€`;
       const extra = d.escluso || d.opzione ? '' : d.tipo === 'doppia' ? '×2' : d.tipo === 'reperibilita' ? 'rep.' : d.otHours > 0 ? `+${d.otHours}h` : '';
-      return `<span class="${cls}" style="background:${colorOf(s)}" title="${esc(s?.name || '')}"><span class="nm">${esc(shortName(s))}</span><small><b>${esc(amt)}</b>${extra ? ` <i>${esc(extra)}</i>` : ''}</small></span>`;
+      const nm = d.concerto ? '♪ ' + (String(d.place || 'Concerto').split('@')[0].trim().slice(0, 12) || 'Concerto') : shortName(s);
+      return `<span class="${cls}" style="background:${colorOf(s)}" title="${esc(d.concerto ? d.place : s?.name || '')}"><span class="nm">${esc(nm)}</span><small><b>${esc(amt)}</b>${extra ? ` <i>${esc(extra)}</i>` : ''}</small></span>`;
     }).join('');
     const warn = list.some(d => d.status === 'controllare');
     cells += `<button class="cell ${out ? 'out' : ''} ${we ? 'we' : ''} ${iso === today ? 'today' : ''}" data-act="cell" data-date="${iso}" data-more="${Math.max(0, list.length - 6)}" ${out ? 'disabled' : ''}>
@@ -414,6 +419,7 @@ function viewServices() {
 
 function svcRuleText(s) {
   const col = (s.colorId ? C.GOOGLE_COLORS[s.colorId]?.name : 'nessun colore') + ` · paga a ${C.num(s.pagamentoGiorni || 30)} gg`;
+  if (s.tipo === 'concerti') return `Concerti: cifra netta dall'evento, conteggio a parte · ${s.colorId ? C.GOOGLE_COLORS[s.colorId]?.name : 'nessun colore'}`;
   if (s.tipo === 'fissa') return `${C.eur(C.num(s.tariffa))} a giornata fissa · ${col}`;
   return `${C.eur(C.num(s.tariffa))} fino a ${C.num(s.oreIncluse)} h, poi ${C.eur(C.num(s.straordinario))}/h${C.num(s.doppiaDa) ? `, doppia dalla ${C.num(s.doppiaDa)}ª ora extra` : ''} · ${col}`;
 }
@@ -466,6 +472,7 @@ function openMenu() {
       ${item('prospetto', '📅', 'Prospetto incassi', 'Quanto ti entra ogni mese, secondo i termini di pagamento')}
       ${item('pagamenti', '✔', 'Pagamenti fatture', 'Fatture della cooperativa: pagate, in attesa, in ritardo')}
       ${item('enpals', '🗂', 'Giornate ENPALS', 'Giornate aperte dalla cooperativa e quelle da far aprire')}
+      ${item('concerti', '♪', 'Concerti', 'Cachet dei concerti, mese per mese, a parte dal resto')}
     </div>
     <div class="sheet-actions btn-row"><button class="btn" data-close-btn>Chiudi</button></div>`, sh => {
     sh.addEventListener('click', e => {
@@ -475,6 +482,7 @@ function openMenu() {
       closeSheet(); render(); window.scrollTo(0, 0);
       if (ui.page === 'prospetto') ensureMonths(forecastWorkMonths());
       if (ui.page === 'enpals') ensureMonths(enpalsMonths());
+      if (ui.page === 'concerti') ensureMonths(concertMonths());
       if (coop && (ui.page === 'pagamenti' || ui.page === 'enpals' || ui.page === 'prospetto')) {
         const at = store.data.coop?.aggiornatoIl || 0;
         if (Date.now() - at > 30 * 60 * 1000) doCoopSync(false);
@@ -508,6 +516,45 @@ function forecastWorkMonths() {
 function enpalsMonths() {
   const cur = thisMonth();
   return [shiftYM(cur, -1), cur, shiftYM(cur, 1), shiftYM(cur, 2), shiftYM(cur, 3), shiftYM(cur, 4)];
+}
+
+function concertMonths() {
+  const y = Number(thisMonth().slice(0, 4));
+  const out = [];
+  for (let m = 1; m <= 12; m++) out.push(`${y}-${String(m).padStart(2, '0')}`);
+  out.push(`${y + 1}-01`, `${y + 1}-02`, `${y + 1}-03`);
+  return out;
+}
+
+function viewConcerts() {
+  const months = concertMonths();
+  const all = [];
+  for (const ym of months) all.push(...monthModel(ym).days);
+  const cs = C.concertSummary(all);
+  const today = todayISO();
+  const y = thisMonth().slice(0, 4);
+  const anno = cs.filter(m => m.mese.startsWith(y));
+  const totAnno = anno.reduce((a, m) => a + m.totale, 0);
+  const fatti = anno.reduce((a, m) => a + m.concerti.filter(d => d.date <= today).length, 0);
+  const prossimi = all.filter(d => d.concerto && !d.escluso && !d.opzione && d.date > today).sort((a, b) => a.date.localeCompare(b.date));
+  const cSvc = services().find(x => x.tipo === 'concerti');
+  let h = loadingLine();
+  h += `<div class="card"><div class="kpis">
+      <div class="kpi"><div class="v">${esc(C.eur(totAnno))}</div><div class="l">concerti ${y} (netto)</div></div>
+      <div class="kpi"><div class="v">${fatti}</div><div class="l">concerti fatti</div></div>
+      <div class="kpi"><div class="v">${prossimi.length}</div><div class="l">in programma</div></div>
+    </div></div>
+    <div class="note info">Sono gli eventi con il colore ${esc(C.GOOGLE_COLORS[cSvc?.colorId]?.name || 'dei concerti')}. Scrivi la cifra netta nell'evento (es. "150 €"). Sono contati a parte: niente fatture, prospetto o ENPALS.</div>`;
+  const row = d => `<button class="list-row" data-act="day-any" data-key="${esc(d.key)}" data-ym="${d.date.slice(0, 7)}"><span class="sw" style="background:${colorOf(cSvc)}"></span>
+    <span class="grow"><div><b>${esc(C.dateLabel(d.date))}</b> · ${esc(d.place || 'Concerto')}</div></span>
+    <span class="amt">${d.compenso ? esc(C.eur(d.compenso)) : '<span class="badge warn">cifra?</span>'}</span></button>`;
+  if (prossimi.length) h += `<h2>In programma (${prossimi.length})</h2><div class="card">${prossimi.map(row).join('')}</div>`;
+  if (!cs.length) h += `<div class="card"><div class="empty"><b>Nessun concerto</b>Non ci sono eventi con il colore dei concerti nei mesi letti.</div></div>`;
+  for (const m of cs.slice().reverse()) {
+    h += `<h2 style="display:flex;justify-content:space-between"><span style="text-transform:capitalize">${esc(C.monthLabel(m.mese))}</span><span>${esc(C.eur(m.totale))}</span></h2>
+      <div class="card">${m.concerti.map(row).join('')}</div>`;
+  }
+  return h;
 }
 
 function loadingLine() {
@@ -717,6 +764,7 @@ function openDay(key) {
       <button class="btn small" data-fix="ot" data-v="${i.noted}">Usa +${i.noted} (la tua nota)</button>
       <button class="btn small" data-fix="ot" data-v="${i.calc}">Usa +${i.calc} (dall'orario)</button></div></div>`;
     if (i.code === 'servizio') return `<div class="issue">${esc(i.text)}<div class="btn-row">${(d.candidates || []).map(id => `<button class="btn small" data-fix="svc" data-v="${esc(id)}">${esc(svcById(id)?.name)}</button>`).join('')}</div></div>`;
+    if (i.code === 'cachet') return `<div class="issue">${esc(i.text)}<div class="btn-row"><input type="number" inputmode="decimal" placeholder="€" style="max-width:110px" class="btn small" data-fixinput="compenso"><button class="btn small" data-fix="compenso">Salva cifra</button></div></div>`;
     if (i.code === 'disp') return `<div class="issue">${esc(i.text)}<div class="btn-row"><input type="number" inputmode="decimal" placeholder="€" style="max-width:110px" class="btn small" data-fixinput="compenso"><button class="btn small" data-fix="compenso">Salva cifra</button><button class="btn small" data-fix="nodisp">Non era reperibilità</button></div></div>`;
     return `<div class="issue">${esc(i.text)}</div>`;
   }).join('');
@@ -728,7 +776,8 @@ function openDay(key) {
     </div>`).join('') || '<div class="muted" style="font-size:13.5px">Nessun rimborso. Puoi scriverli nella descrizione dell\'evento (es. "+18 cena") o aggiungerli qui.</div>';
 
   let calcRows = '';
-  if (d.compensoManuale) calcRows += `<div class="row"><span>Cifra concordata (a mano)</span><span>${esc(C.eur(d.compenso))}</span></div>`;
+  if (d.concerto) calcRows += `<div class="row"><span>Concerto – cifra netta ${d.compensoManuale ? '(a mano)' : '(dall\'evento)'}</span><span>${esc(d.compenso ? C.eur(d.compenso) : 'da inserire')}</span></div>`;
+  else if (d.compensoManuale) calcRows += `<div class="row"><span>Cifra concordata (a mano)</span><span>${esc(C.eur(d.compenso))}</span></div>`;
   else if (d.tipo === 'doppia') calcRows += `<div class="row"><span>Doppia (${d.otHours}ª ora extra)</span><span>${esc(C.eur(d.compenso))}</span></div>`;
   else {
     calcRows += `<div class="row"><span>${d.tipo === 'reperibilita' ? 'Reperibilità' : 'Giornata'}</span><span>${esc(C.eur(d.base))}</span></div>`;
@@ -942,17 +991,18 @@ function openService(id) {
     <div class="field"><span>Colore su One Calendar</span><div class="swatches" id="s-col">${sw}</div></div>
     <label class="field"><span>Tipo di compenso</span><select id="s-tipo">
       <option value="giornata" ${s.tipo !== 'fissa' ? 'selected' : ''}>Giornata con straordinari</option>
-      <option value="fissa" ${s.tipo === 'fissa' ? 'selected' : ''}>Giornata fissa (mai straordinari)</option></select></label>
+      <option value="fissa" ${s.tipo === 'fissa' ? 'selected' : ''}>Giornata fissa (mai straordinari)</option>
+      <option value="concerti" ${s.tipo === 'concerti' ? 'selected' : ''}>Concerti (cifra netta scritta nell'evento, conteggio a parte)</option></select></label>
     <div class="grid2">
-      <label class="field"><span>Compenso giornata €</span><input type="number" inputmode="decimal" id="s-tar" value="${esc(s.tariffa ?? '')}"></label>
+      <label class="field g-svc"><span>Compenso giornata €</span><input type="number" inputmode="decimal" id="s-tar" value="${esc(s.tariffa ?? '')}"></label>
       <label class="field g-ot"><span>Ore incluse</span><input type="number" inputmode="decimal" id="s-ore" value="${esc(s.oreIncluse ?? '')}"></label>
       <label class="field g-ot"><span>Straordinario €/ora</span><input type="number" inputmode="decimal" id="s-str" value="${esc(s.straordinario ?? '')}"></label>
       <label class="field g-ot"><span>Doppia dalla ora extra n°</span><input type="number" inputmode="numeric" id="s-dop" value="${esc(s.doppiaDa ?? '')}" placeholder="vuoto = mai"></label>
     </div>
     <small class="muted g-ot">Ogni ora iniziata oltre le ore incluse conta come un'ora intera. Le ore incluse comprendono la pausa pranzo.</small>
-    <label class="field"><span>Paga a giorni (dalla fine del mese di lavoro)</span><select id="s-pag">
+    <label class="field g-svc"><span>Paga a giorni (dalla fine del mese di lavoro)</span><select id="s-pag">
       ${[30, 60, 90, 120].map(g => `<option value="${g}" ${C.num(s.pagamentoGiorni || 30) === g ? 'selected' : ''}>${g} giorni – fine mese</option>`).join('')}</select></label>
-    <h2>Dati per la fattura</h2>
+    <div class="g-svc"><h2>Dati per la fattura</h2>
     <label class="field"><span>Ragione sociale</span><input type="text" id="f-rs" value="${esc(f.ragioneSociale || '')}"></label>
     <label class="field"><span>Indirizzo</span><input type="text" id="f-ind" value="${esc(f.indirizzo || '')}"></label>
     <div class="grid2">
@@ -960,7 +1010,7 @@ function openService(id) {
       <label class="field"><span>Codice fiscale</span><input type="text" id="f-cf" value="${esc(f.cf || '')}"></label>
       <label class="field"><span>Codice SDI</span><input type="text" id="f-sdi" value="${esc(f.sdi || '')}"></label>
     </div>
-    <label class="field"><span>Email per fatture</span><input type="text" id="f-mail" value="${esc(f.email || '')}"></label>
+    <label class="field"><span>Email per fatture</span><input type="text" id="f-mail" value="${esc(f.email || '')}"></label></div>
     <div class="sheet-actions btn-row">
       ${id ? '<button class="btn danger" data-s="del">Elimina</button>' : ''}
       <button class="btn" data-close-btn>Annulla</button>
@@ -968,7 +1018,10 @@ function openService(id) {
     </div>`, sh => {
     let colorId = s.colorId || '';
     const tipoSel = sh.querySelector('#s-tipo');
-    const toggle = () => sh.querySelectorAll('.g-ot').forEach(el => { el.style.display = tipoSel.value === 'fissa' ? 'none' : ''; });
+    const toggle = () => {
+      sh.querySelectorAll('.g-ot').forEach(el => { el.style.display = tipoSel.value === 'giornata' ? '' : 'none'; });
+      sh.querySelectorAll('.g-svc').forEach(el => { el.style.display = tipoSel.value === 'concerti' ? 'none' : ''; });
+    };
     tipoSel.addEventListener('change', toggle); toggle();
     sh.querySelector('#s-col').addEventListener('click', e => {
       const b = e.target.closest('[data-col]');

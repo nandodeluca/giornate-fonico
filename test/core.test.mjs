@@ -202,3 +202,29 @@ test('giornate in opzione (???): visibili ma non conteggiate', () => {
   const r = C.enpalsCompare(days, [], '2026-06-01');
   assert.deepEqual(r.mancanti.map(d => d.date), ['2026-06-03']);
 });
+
+test('concerti: cifra netta dall\'evento, conteggio a parte', () => {
+  const SC = [...S, { id: 'concerti', name: 'CONCERTI', colorId: '9', keywords: [], tipo: 'concerti' }];
+  assert.equal(C.parseConcertFee('Sigla! @ Bonaventura 150 €'), 150);
+  assert.equal(C.parseConcertFee('cachet: 200'), 200);
+  assert.equal(C.parseConcertFee('€ 180,50 netti'), 180.5);
+  assert.equal(C.parseConcertFee('Sigla! @ Bonaventura (MI)'), null);
+  const evs = [
+    ev('Sigla! @ Bonaventura (MI)', '200 €', '9', '2026-12-19', null, 'c1'),
+    ev('Band @ Locale', '', '9', '2026-12-05', null, 'c2'),
+    ev('Alfa Fiera', '8 - 18', '5', '2026-12-03', null, 'a1'),
+  ];
+  const data = { ...C.emptyData(), services: SC };
+  const { days } = C.buildDays(evs, data, { from: '2026-12-01', to: '2027-01-01' }, '2026-12-31');
+  const c1 = days.find(d => d.eventId === 'c1');
+  assert.equal(c1.concerto, true);
+  assert.equal(c1.compenso, 200);
+  assert.equal(c1.place, 'Sigla! @ Bonaventura (MI)');
+  assert.ok(days.find(d => d.eventId === 'c2').issues.some(i => i.code === 'cachet'));
+  const sums = C.summarize(days, SC, '2026-12', data);
+  assert.deepEqual(sums.map(x => x.service.id), ['a']);
+  const cs = C.concertSummary(days);
+  assert.equal(cs[0].totale, 200);
+  assert.equal(cs[0].senzaCifra, 1);
+  assert.deepEqual(C.enpalsCompare(days, [], '2026-12-01').mancanti.map(d => d.date), ['2026-12-03']);
+});

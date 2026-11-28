@@ -1,8 +1,8 @@
 {
   "name": "giornate-fonico-desktop",
-  "productName": "Giornate Fonico",
+  "productName": "Cachet",
   "version": "0.1.0",
-  "description": "Giornate Fonico per Windows",
+  "description": "Cachet per Windows",
   "author": "Fernando De Luca",
   "main": "main.js",
   "private": true,
@@ -16,8 +16,8 @@
   },
   "build": {
     "appId": "it.nandodeluca.giornate",
-    "productName": "Giornate Fonico",
-    "artifactName": "GiornateFonico-Setup-${version}.${ext}",
+    "productName": "Cachet",
+    "artifactName": "Cachet-Setup-${version}.${ext}",
     "files": ["main.js", "preload.js", "google.json", "www/**/*"],
     "directories": { "output": "dist" },
     "win": { "target": ["nsis"], "icon": "build/icon.png" },
@@ -26,7 +26,7 @@
       "perMachine": false,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
-      "shortcutName": "Giornate Fonico"
+      "shortcutName": "Cachet"
     }
   }
 }

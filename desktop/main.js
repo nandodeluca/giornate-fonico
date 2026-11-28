@@ -15,6 +15,9 @@ const SCOPES = [
 ].join(' ');
 const AUTH_FILE = () => path.join(app.getPath('userData'), 'accesso.bin');
 
+// Il nome è cambiato in "Cachet": i dati (accesso Google, cooperativa) restano nella cartella di prima
+app.setPath('userData', path.join(app.getPath('appData'), 'Giornate Fonico'));
+
 let win = null;
 let access = null; // {token, exp}
 
@@ -63,7 +66,7 @@ function signIn() {
       if (u.pathname !== '/') { res.writeHead(404); res.end(); return; }
       const done = (ok, msg) => {
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-        res.end(`<!doctype html><meta charset="utf-8"><title>Giornate Fonico</title><body style="font-family:system-ui;text-align:center;padding:60px">
+        res.end(`<!doctype html><meta charset="utf-8"><title>Cachet</title><body style="font-family:system-ui;text-align:center;padding:60px">
           <h2>${ok ? 'Accesso fatto ✓' : 'Accesso non riuscito'}</h2><p>${msg}</p></body>`);
         server.close();
         if (win) { if (win.isMinimized()) win.restore(); win.focus(); }
@@ -208,7 +211,7 @@ ipcMain.handle('saveFile', async (_e, name, content) => {
 function createWindow() {
   win = new BrowserWindow({
     width: 1000, height: 820, minWidth: 380, minHeight: 500,
-    title: 'Giornate Fonico', backgroundColor: '#f4f2ee', autoHideMenuBar: true,
+    title: 'Cachet', backgroundColor: '#1c1c1e', autoHideMenuBar: true,
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: true },
   });
   win.loadFile(path.join(__dirname, 'www', 'index.html'));

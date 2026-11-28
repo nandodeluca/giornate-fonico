@@ -211,6 +211,14 @@ export function parseExpenses(text) {
   return out;
 }
 
+// Cifra netta di un concerto scritta nell'evento: "150 €", "€150", "150 euro", "cachet 150", "netto 150"
+export function parseConcertFee(text) {
+  const t = stripHtml(text || '');
+  const m = t.match(/€\s*(\d+(?:[.,]\d{1,2})?)/) || t.match(/(\d+(?:[.,]\d{1,2})?)\s*(?:€|euro\b|eur\b)/i)
+    || t.match(/\b(?:cachet|netto|compenso)\s*:?\s*(\d+(?:[.,]\d{1,2})?)/i);
+  return m ? num(m[1]) : null;
+}
+
 // ---------- service ----------
 
 export function matchService(ev, services) {
@@ -327,7 +335,15 @@ export function computeDay(ctx) {
   const notedDoppia = /\bdoppia\b/i.test(desc) || /\bdoppia\b/i.test(ev.summary || '');
 
   let base = 0, otHours = 0, otCalc = null, otPay = 0, tipo = 'normale';
-  if (service) {
+  const concerto = service?.tipo === 'concerti';
+  if (concerto) {
+    tipo = 'concerto';
+    const fee = parseConcertFee(desc) ?? parseConcertFee(ev.summary);
+    base = fee ?? 0;
+    if (fee == null && !hasValue(ov.compenso) && date <= today && !/\?{3,}/.test(ev.summary || '')) {
+      issues.push({ code: 'cachet', text: 'Concerto senza cifra: scrivila nell\'evento (es. "150 €") o inseriscila qui' });
+    }
+  } else if (service) {
     const tariffa = num(service.tariffa);
     if (service.tipo === 'fissa') {
       base = tariffa;
@@ -389,12 +405,12 @@ export function computeDay(ctx) {
   const rimborsiTot = rimborsi.filter(r => r.incluso).reduce((a, r) => a + r.amount, 0);
 
   const past = date <= today;
-  if (service && past && !compensoManuale && tipo !== 'reperibilita' && service.tipo !== 'fissa') {
+  if (service && past && !compensoManuale && tipo !== 'reperibilita' && service.tipo !== 'fissa' && !concerto) {
     if (times.minutes == null && !hasValue(ov.otHours)) {
       issues.push({ code: 'orario', text: times.partialStart ? `Orario incompleto: c'è solo l'inizio (${hhmm(times.partialStart)})` : 'Orario mancante: non riesco a leggere l\'orario' });
     }
   }
-  if (multi && !ov.ok && !hasValue(ov.start)) {
+  if (multi && !ov.ok && !hasValue(ov.start) && !concerto) {
     issues.push({ code: 'multi', text: 'Evento su più giorni: controlla gli orari di ogni giornata' });
   }
 
@@ -412,11 +428,11 @@ export function computeDay(ctx) {
     serviceId: service?.id || null, serviceName: service?.name || null,
     candidates: m?.candidates?.map(c => c.id) || null,
     how: ov.serviceId ? 'manuale' : (m?.how || null),
-    place: placeFromTitle(ev.summary, m?.keywordLen || 0),
+    place: concerto ? String(ev.summary || '').replace(/\?{2,}/g, '').trim() : placeFromTitle(ev.summary, m?.keywordLen || 0),
     shifts: times.shifts, minutes: times.minutes, partialStart: times.partialStart, source,
     tipo, otCalc, otHours: tipo === 'doppia' ? otHours : otHours, notedOt, base, otPay, compenso, compensoManuale,
     rimborsi, rimborsiTot, totale: escluso || opzione ? 0 : compenso + rimborsiTot,
-    issues: ov.ok || opzione ? [] : issues, info, status, multi, escluso, opzione, nota: ov.nota || '',
+    issues: ov.ok || opzione ? [] : issues, info, status, multi, escluso, opzione, concerto, nota: ov.nota || '',
   };
 }
 
@@ -462,7 +478,7 @@ export function buildDays(events, data, range, today) {
 export function summarize(days, services, ym, data) {
   const by = new Map();
   for (const d of days) {
-    if (!d.date.startsWith(ym) || d.escluso || d.opzione || !d.serviceId) continue;
+    if (!d.date.startsWith(ym) || d.escluso || d.opzione || d.concerto || !d.serviceId) continue;
     if (!by.has(d.serviceId)) by.set(d.serviceId, []);
     by.get(d.serviceId).push(d);
   }
@@ -802,9 +818,25 @@ export function enpalsCompare(workDays, coopEvents, fromDate) {
   const opened = new Map();
   for (const e of coopEvents || []) if (e.data >= fromDate) opened.set(e.data, e);
   const work = new Map();
-  for (const d of workDays) if (!d.escluso && !d.opzione && d.date >= fromDate && !work.has(d.date)) work.set(d.date, d);
+  for (const d of workDays) if (!d.escluso && !d.opzione && !d.concerto && d.date >= fromDate && !work.has(d.date)) work.set(d.date, d);
   const mancanti = [...work.values()].filter(d => !opened.has(d.date)).sort((a, b) => a.date.localeCompare(b.date));
   const inPiu = [...opened.values()].filter(e => !work.has(e.data));
   const ok = [...work.values()].filter(d => opened.has(d.date)).length;
   return { mancanti, inPiu, ok, lavorate: work.size, aperte: opened.size };
+}
+
+/** Concerti: totali per mese, a parte da service, fatture ed ENPALS */
+export function concertSummary(days) {
+  const byM = new Map();
+  for (const d of days) {
+    if (!d.concerto || d.escluso || d.opzione) continue;
+    const k = d.date.slice(0, 7);
+    if (!byM.has(k)) byM.set(k, []);
+    byM.get(k).push(d);
+  }
+  return [...byM.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([mese, list]) => ({
+    mese, concerti: list.sort((a, b) => a.date.localeCompare(b.date)),
+    totale: round2(list.reduce((a, d) => a + d.compenso, 0)),
+    senzaCifra: list.filter(d => d.issues.some(i => i.code === 'cachet')).length,
+  }));
 }
