@@ -340,3 +340,44 @@ details.more > summary { cursor: pointer; color: var(--muted); font-size: 13.5px
 }
 
 .cell .ev.opt { opacity: .45; outline: 1px dashed rgba(255,255,255,.8); outline-offset: -2px; }
+
+/* etichette nella griglia: service + luogo */
+.cell .ev .ln1 { display: block; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.cell .ev .pl { font-weight: 500; }
+.cell .ev .nm + .pl::before { content: ' · '; }
+@media (max-width: 560px) {
+  .cell .ev .ln1 .nm { display: none; }
+  .cell .ev .nm + .pl::before { content: ''; }
+  .cell .ev .ln1 { font-size: 10.5px; line-height: 1.25; }
+  .cell .ev.nopl .ln1 .nm { display: inline; }
+}
+/* compact (finestra bassa) su desktop: tutto su una riga */
+.cal-grid.compact .ev .ln1 { display: inline; }
+.cal-grid.compact.wide .ev .nm { display: inline; margin-right: 0; }
+.cal-grid.compact .ev .pl { margin-right: 5px; }
+
+/* sabato e domenica in rosso tenue */
+.cal-head span:nth-child(6), .cal-head span:nth-child(7) { color: #e58b8b; }
+.cell.we { background: rgba(229, 90, 90, .07); }
+.cell.we .num { color: #e58b8b; }
+.cell.we.out { background: rgba(229, 90, 90, .04); }
+
+/* telefono: riepilogo in alto più compatto */
+@media (max-width: 560px) {
+  main { padding: 8px 10px; }
+  .kpi { padding: 6px 4px; }
+  .kpi .v { font-size: 16px; }
+  .kpi .l { font-size: 10.5px; line-height: 1.2; }
+  .svc-strip { flex-wrap: nowrap; overflow-x: auto; gap: 5px; padding: 6px 8px 8px; scrollbar-width: none; }
+  .svc-strip::-webkit-scrollbar { display: none; }
+  .chip.chip2 { padding: 3px 8px 4px 7px; flex: none; }
+  .chip.chip2 .sw { width: 8px; height: 8px; margin-top: 4px; }
+  .chip.chip2 .c-name { font-size: 10.5px; }
+  .chip.chip2 .c-amt { font-size: 13px; }
+  .chip.chip2 .c-amt small { font-size: 10.5px; }
+}
+
+@media (max-width: 560px) {
+  .cell .ev .ln1 { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; word-break: break-word; hyphens: auto; font-size: 10px; line-height: 1.2; }
+  .cell .ev { padding: 2px 2px 2px 3px; }
+}

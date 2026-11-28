@@ -157,7 +157,7 @@ function fitGrid() {
   const legendH = legend ? legend.getBoundingClientRect().height + 10 : 0;
   const top = g.getBoundingClientRect().top + window.scrollY;
   const avail = window.innerHeight - top - tabsH - legendH - 14;
-  const minRow = window.innerWidth < 560 ? 56 : 33;
+  const minRow = window.innerWidth < 560 ? 66 : 33;
   const row = Math.max(minRow, Math.floor(avail / weeks));
   g.style.gridAutoRows = `${row}px`;
   g.classList.add('fit');
@@ -167,7 +167,7 @@ function fitGrid() {
   g.classList.toggle('wide', g.clientWidth / 7 >= 125);
   if (legend) legend.style.display = compact ? 'none' : '';
   // quante etichette stanno in una cella
-  const chipH = compact ? 19 : (window.innerWidth < 560 ? 30 : 32);
+  const chipH = compact ? 19 : (window.innerWidth < 560 ? 40 : 32);
   const per = Math.max(1, Math.floor((row - 21) / chipH));
   for (const cell of g.children) {
     const evs = cell.querySelectorAll('.ev');
@@ -251,7 +251,7 @@ function viewDays(m) {
   let h = `<div class="card">
     <div class="kpis">
       <div class="kpi"><div class="v">${work.length}</div><div class="l">giornate</div></div>
-      <div class="kpi"><div class="v">${esc(C.eur(tot))}</div><div class="l">compensi (senza IVA)</div></div>
+      <div class="kpi"><div class="v">${esc(C.eur(tot))}</div><div class="l">compensi (no IVA)</div></div>
       <div class="kpi"><div class="v">${esc(C.eur(rimb))}</div><div class="l">rimborsi</div></div>
     </div>
     ${m.sums.length ? `<div class="svc-strip">${m.sums.map(s => {
@@ -321,8 +321,9 @@ function viewGrid(m) {
       const cls = ['ev', d.status === 'prevista' ? 'prev' : '', d.status === 'controllare' ? 'chk' : '', d.escluso ? 'excl' : '', d.opzione ? 'opt' : '', s ? '' : 'unk'].join(' ');
       const amt = d.escluso ? '—' : d.opzione ? '???' : d.concerto && !d.compenso ? '€ ?' : `${Math.round(d.compenso + d.rimborsiTot)}€`;
       const extra = d.escluso || d.opzione ? '' : d.tipo === 'doppia' ? '×2' : d.tipo === 'reperibilita' ? 'rep.' : d.otHours > 0 ? `+${d.otHours}h` : '';
-      const nm = d.concerto ? '♪ ' + (String(d.place || 'Concerto').split('@')[0].trim().slice(0, 12) || 'Concerto') : shortName(s);
-      return `<span class="${cls}" style="background:${colorOf(s)}" title="${esc(d.concerto ? d.place : s?.name || '')}"><span class="nm">${esc(nm)}</span><small><b>${esc(amt)}</b>${extra ? ` <i>${esc(extra)}</i>` : ''}</small></span>`;
+      const nm = d.concerto ? '♪' : shortName(s);
+      const pl = d.concerto ? (String(d.place || 'Concerto').split('@')[0].trim() || 'Concerto') : (d.place || '');
+      return `<span class="${cls}${pl ? '' : ' nopl'}" style="background:${colorOf(s)}" title="${esc(d.concerto ? d.place : `${s?.name || ''}${d.place ? ' · ' + d.place : ''}`)}"><span class="ln1"><span class="nm">${esc(nm)}</span>${pl ? `<span class="pl">${esc(pl)}</span>` : ''}</span><small><b>${esc(amt)}</b>${extra ? ` <i>${esc(extra)}</i>` : ''}</small></span>`;
     }).join('');
     const warn = list.some(d => d.status === 'controllare');
     cells += `<button class="cell ${out ? 'out' : ''} ${we ? 'we' : ''} ${iso === today ? 'today' : ''}" data-act="cell" data-date="${iso}" data-more="${Math.max(0, list.length - 6)}" ${out ? 'disabled' : ''}>
