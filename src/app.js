@@ -226,6 +226,7 @@ function dayRow(d) {
   if (d.tipo === 'reperibilita') badges.push('<span class="badge">reperibilità</span>');
   if (d.compensoManuale) badges.push('<span class="badge">a mano</span>');
   if (d.escluso) badges.push('<span class="badge">esclusa</span>');
+  if (d.opzione) badges.push('<span class="badge">opzione</span>');
   return `<button class="day ${d.escluso ? 'excluded' : ''}" data-act="day" data-key="${esc(d.key)}">
     <span class="bar" style="background:${colorOf(s)}"></span>
     <span class="body">
@@ -233,7 +234,7 @@ function dayRow(d) {
       <span class="t2 calc">${esc(orario)}${extra.length ? ' · ' + esc(extra.join(' · ')) : ''}</span>
       ${d.status === 'controllare' ? `<span class="t3">${esc(d.issues[0]?.text || '')}${d.issues.length > 1 ? ` (+${d.issues.length - 1})` : ''}</span>` : ''}
     </span>
-    <span class="right"><span class="amt">${d.escluso ? '—' : esc(C.eur(d.compenso + d.rimborsiTot))}</span>${badges.join('')}</span>
+    <span class="right"><span class="amt" ${d.opzione ? 'style="opacity:.5"' : ''}>${d.escluso ? '—' : esc(C.eur(d.compenso + d.rimborsiTot))}</span>${badges.join('')}</span>
   </button>`;
 }
 
@@ -242,7 +243,7 @@ function viewDays(m) {
   if (!m.hasEvents && ui.loading) return `<div class="empty">Leggo il calendario…</div>`;
   const tot = m.sums.reduce((a, s) => a + s.compensi, 0);
   const rimb = m.sums.reduce((a, s) => a + s.rimborsi, 0);
-  const work = m.days.filter(d => !d.escluso);
+  const work = m.days.filter(d => !d.escluso && !d.opzione);
   const prev = work.filter(d => d.status === 'prevista').reduce((a, d) => a + d.compenso, 0);
   const check = m.days.filter(d => d.status === 'controllare');
   let h = `<div class="card">
@@ -262,7 +263,7 @@ function viewDays(m) {
   h += '<div style="height:10px"></div>';
   if (ui.view === 'griglia') {
     h += viewGrid(m);
-    h += `<div class="legend"><span><i style="opacity:.55"></i>prevista</span><span><i style="box-shadow:inset 0 0 0 2px var(--warn)"></i>da controllare</span><span><i style="opacity:.3"></i>esclusa</span></div>`;
+    h += `<div class="legend"><span><i style="opacity:.55"></i>prevista</span><span><i style="box-shadow:inset 0 0 0 2px var(--warn)"></i>da controllare</span><span><i style="opacity:.3"></i>esclusa</span><span><i style="opacity:.45;outline:1px dashed var(--text)"></i>opzione (???)</span></div>`;
   }
   if (check.length) {
     h += `<h2>Da controllare (${check.length})</h2><div class="card">${check.map(dayRow).join('')}</div>`;
@@ -313,9 +314,9 @@ function viewGrid(m) {
     const shown = list.slice(0, 6);
     const chips = shown.map(d => {
       const s = svcById(d.serviceId);
-      const cls = ['ev', d.status === 'prevista' ? 'prev' : '', d.status === 'controllare' ? 'chk' : '', d.escluso ? 'excl' : '', s ? '' : 'unk'].join(' ');
-      const amt = d.escluso ? '—' : `${Math.round(d.compenso + d.rimborsiTot)}€`;
-      const extra = d.escluso ? '' : d.tipo === 'doppia' ? '×2' : d.tipo === 'reperibilita' ? 'rep.' : d.otHours > 0 ? `+${d.otHours}h` : '';
+      const cls = ['ev', d.status === 'prevista' ? 'prev' : '', d.status === 'controllare' ? 'chk' : '', d.escluso ? 'excl' : '', d.opzione ? 'opt' : '', s ? '' : 'unk'].join(' ');
+      const amt = d.escluso ? '—' : d.opzione ? '???' : `${Math.round(d.compenso + d.rimborsiTot)}€`;
+      const extra = d.escluso || d.opzione ? '' : d.tipo === 'doppia' ? '×2' : d.tipo === 'reperibilita' ? 'rep.' : d.otHours > 0 ? `+${d.otHours}h` : '';
       return `<span class="${cls}" style="background:${colorOf(s)}" title="${esc(s?.name || '')}"><span class="nm">${esc(shortName(s))}</span><small><b>${esc(amt)}</b>${extra ? ` <i>${esc(extra)}</i>` : ''}</small></span>`;
     }).join('');
     const warn = list.some(d => d.status === 'controllare');
@@ -634,25 +635,55 @@ function viewEnpals() {
   const work = [];
   for (const ym of months) work.push(...monthModel(ym).days);
   const from = `${months[0]}-01`;
-  const r = C.enpalsCompare(work, c.eventi, from);
   const today = todayISO();
+  const r = C.enpalsCompare(work, c.eventi, from);
   const fut = r.mancanti.filter(d => d.date >= today);
   const pas = r.mancanti.filter(d => d.date < today);
+  const workByDate = new Map();
+  for (const d of work) if (!d.escluso && !d.opzione && !workByDate.has(d.date)) workByDate.set(d.date, d);
+  const aperteFuture = (c.eventi || []).filter(e => e.data >= today);
+  const storico = (c.eventi || []).filter(e => e.data < today).sort((a, b) => b.data.localeCompare(a.data));
   const line = d => `${C.dateLabel(d.date)} – ${d.serviceName || '?'}${d.place ? ' – ' + d.place : ''}`;
   const mailText = `Buongiorno, vi chiedo di aprire le seguenti giornate:\n${fut.map(d => '- ' + line(d)).join('\n')}\n\nGrazie, Fernando`;
+
   h += `<div class="card"><div class="kpis">
-      <div class="kpi"><div class="v">${r.lavorate}</div><div class="l">giornate in calendario</div></div>
-      <div class="kpi"><div class="v" style="color:var(--ok)">${r.ok}</div><div class="l">già aperte</div></div>
-      <div class="kpi"><div class="v" style="color:${r.mancanti.length ? 'var(--bad)' : 'var(--ok)'}">${r.mancanti.length}</div><div class="l">da far aprire</div></div>
-    </div></div>
-    <div class="note info">Confronto dal ${esc(from.split('-').reverse().join('/'))} in poi, tra le giornate di lavoro del calendario e quelle aperte dalla cooperativa ("I miei eventi").</div>`;
+      <div class="kpi"><div class="v" style="color:${fut.length ? 'var(--bad)' : 'var(--ok)'}">${fut.length}</div><div class="l">da far aprire</div></div>
+      <div class="kpi"><div class="v">${aperteFuture.length}</div><div class="l">prossime già aperte</div></div>
+      <div class="kpi"><div class="v">${storico.length}</div><div class="l">aperte in passato</div></div>
+    </div></div>`;
+
   const rowW = d => `<button class="list-row" data-act="day-any" data-key="${esc(d.key)}" data-ym="${d.date.slice(0, 7)}"><span class="sw" style="background:${colorOf(svcById(d.serviceId))}"></span>
-    <span class="grow"><div><b>${esc(C.dateLabel(d.date))}</b> · ${esc(d.serviceName || '?')}${d.place ? ' · ' + esc(d.place) : ''}</div></span>${d.date >= today ? '<span class="badge">futura</span>' : '<span class="badge bad">passata</span>'}</button>`;
-  if (fut.length) h += `<h2>Da far aprire (${fut.length})</h2><div class="card">${fut.map(rowW).join('')}</div>
-    <div class="btn-row" style="margin-top:8px"><button class="btn primary" data-act="copy-enpals" data-text="${esc(mailText)}">Copia elenco per la mail</button></div>`;
-  if (pas.length) h += `<h2>Passate senza giornata aperta (${pas.length})</h2><div class="card">${pas.map(rowW).join('')}</div>`;
-  if (!r.mancanti.length) h += `<div class="card"><div class="empty"><b>Tutto a posto</b>Tutte le giornate di lavoro del calendario risultano aperte.</div></div>`;
-  if (r.inPiu.length) h += `<h2>Aperte ma non nel calendario (${r.inPiu.length})</h2><div class="card">${r.inPiu.map(e => `<div class="list-row"><span class="grow"><div><b>${esc(C.dateLabel(e.data))}</b> · ${esc(e.luogo)}</div><div class="muted">Non c'è sul calendario: manca l'evento, oppure è una giornata aperta senza lavoro</div></span></div>`).join('')}</div>`;
+    <span class="grow"><div><b>${esc(C.dateLabel(d.date))}</b> · ${esc(d.serviceName || '?')}${d.place ? ' · ' + esc(d.place) : ''}</div></span></button>`;
+  const rowE = e => {
+    const w = workByDate.get(e.data);
+    const s = w ? svcById(w.serviceId) : null;
+    return `<div class="list-row"><span class="sw" style="background:${s ? colorOf(s) : 'transparent'};outline:1px solid var(--line)"></span>
+      <span class="grow"><div><b>${esc(C.dateLabel(e.data))}</b> · ${esc(e.luogo)}</div>
+      <div class="muted">${w ? `Calendario: ${esc(w.serviceName || '?')}${w.place ? ' · ' + esc(w.place) : ''}` : (e.data >= from ? 'Non c\'è sul calendario: manca l\'evento, oppure è una giornata aperta senza lavoro' : '')}</div></span>
+      ${w ? '<span class="badge good">✓</span>' : (e.data >= from ? '<span class="badge warn">non in calendario</span>' : '')}</div>`;
+  };
+
+  h += `<h2>Da far aprire – lavori in calendario non ancora aperti (${fut.length})</h2>`;
+  h += fut.length
+    ? `<div class="card">${fut.map(rowW).join('')}</div>
+       <div class="btn-row" style="margin-top:8px"><button class="btn primary" data-act="copy-enpals" data-text="${esc(mailText)}">Copia elenco per la mail</button></div>`
+    : `<div class="card"><div class="empty" style="padding:16px"><b>Niente da aprire</b>Tutti i lavori futuri del calendario risultano già aperti (le opzioni "???" non contano).</div></div>`;
+
+  h += `<h2>Prossime giornate già aperte (${aperteFuture.length})</h2>`;
+  h += aperteFuture.length ? `<div class="card">${aperteFuture.map(rowE).join('')}</div>`
+    : `<div class="card"><div class="empty" style="padding:16px">Nessuna giornata futura aperta sul portale.</div></div>`;
+
+  if (pas.length) h += `<h2>Lavori passati senza giornata aperta (${pas.length})</h2><div class="card">${pas.map(rowW).join('')}</div>`;
+
+  // storico per mese
+  const byM = new Map();
+  for (const e of storico) { const k = e.data.slice(0, 7); if (!byM.has(k)) byM.set(k, []); byM.get(k).push(e); }
+  h += `<h2>Storico giornate aperte</h2>`;
+  if (!byM.size) h += `<div class="card"><div class="empty" style="padding:16px">Nessuna giornata passata sul portale.</div></div>`;
+  for (const [k, list] of byM) {
+    h += `<details class="more" ${k === shiftYM(thisMonth(), 0) || k === shiftYM(thisMonth(), -1) ? 'open' : ''}><summary><span style="text-transform:capitalize">${esc(C.monthLabel(k))}</span> · ${list.length} ${list.length === 1 ? 'giornata' : 'giornate'}</summary>
+      <div class="card">${list.slice().sort((a, b) => a.data.localeCompare(b.data)).map(rowE).join('')}</div></details>`;
+  }
   return h;
 }
 

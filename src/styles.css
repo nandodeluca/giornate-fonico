@@ -338,3 +338,5 @@ details.more > summary { cursor: pointer; color: var(--muted); font-size: 13.5px
   .top-row .icon-btn { width: 36px; }
   .month { font-size: 16px; }
 }
+
+.cell .ev.opt { opacity: .45; outline: 1px dashed rgba(255,255,255,.8); outline-offset: -2px; }

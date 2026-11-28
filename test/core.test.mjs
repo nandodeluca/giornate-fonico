@@ -186,3 +186,19 @@ test('giornate aperte dalla cooperativa vs calendario', () => {
   assert.deepEqual(r.mancanti.map(d => d.date), ['2026-12-02']);
   assert.deepEqual(r.inPiu.map(e => e.data), ['2026-12-09']);
 });
+
+test('giornate in opzione (???): visibili ma non conteggiate', () => {
+  const e1 = ev('Alfa???', '8 - 18', '5', '2026-06-02', null, 'o1');
+  const e2 = ev('Alfa Fiera', '8 - 18', '5', '2026-06-03', null, 'o2');
+  const data = { ...C.emptyData(), services: S };
+  const { days } = C.buildDays([e1, e2], data, { from: '2026-06-01', to: '2026-07-01' }, '2026-12-31');
+  assert.equal(days.length, 2);
+  const o = days.find(d => d.eventId === 'o1');
+  assert.equal(o.status, 'opzione');
+  assert.equal(o.place, '');
+  const [sum] = C.summarize(days, S, '2026-06', data);
+  assert.equal(sum.giornate, 1);
+  assert.equal(sum.compensi, 250);
+  const r = C.enpalsCompare(days, [], '2026-06-01');
+  assert.deepEqual(r.mancanti.map(d => d.date), ['2026-06-03']);
+});

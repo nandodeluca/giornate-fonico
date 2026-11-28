@@ -248,7 +248,7 @@ export function isIgnoredTitle(title, ignoreWords) {
 export function placeFromTitle(title, keywordLen) {
   let t = String(title || '').trim();
   if (keywordLen) t = t.slice(keywordLen).trim();
-  t = t.replace(/\bdisp\b/gi, '').replace(/\b(h\.?\s*)?\d{1,2}([:.]\d{2})?\s*[-–]\s*(h\.?\s*)?\d{1,2}([:.]\d{2})?(\s*\+\s*\d{1,2}([:.]\d{2})?\s*[-–]\s*\d{1,2}([:.]\d{2})?)?/gi, '')
+  t = t.replace(/\?{2,}/g, '').replace(/\bdisp\b/gi, '').replace(/\b(h\.?\s*)?\d{1,2}([:.]\d{2})?\s*[-–]\s*(h\.?\s*)?\d{1,2}([:.]\d{2})?(\s*\+\s*\d{1,2}([:.]\d{2})?\s*[-–]\s*\d{1,2}([:.]\d{2})?)?/gi, '')
     .replace(/\s+/g, ' ').replace(/^[\s\-–:,]+|[\s\-–:,+]+$/g, '').trim();
   return t;
 }
@@ -399,8 +399,11 @@ export function computeDay(ctx) {
   }
 
   const escluso = !!ov.escludi;
+  // "Congress???": lavoro ancora in opzione, si vede ma non conta
+  const opzione = /\?{3,}/.test(ev.summary || '');
   let status = 'ok';
   if (escluso) status = 'esclusa';
+  else if (opzione) status = 'opzione';
   else if (!past) status = 'prevista';
   else if (issues.length && !ov.ok) status = 'controllare';
 
@@ -412,8 +415,8 @@ export function computeDay(ctx) {
     place: placeFromTitle(ev.summary, m?.keywordLen || 0),
     shifts: times.shifts, minutes: times.minutes, partialStart: times.partialStart, source,
     tipo, otCalc, otHours: tipo === 'doppia' ? otHours : otHours, notedOt, base, otPay, compenso, compensoManuale,
-    rimborsi, rimborsiTot, totale: escluso ? 0 : compenso + rimborsiTot,
-    issues: ov.ok ? [] : issues, info, status, multi, escluso, nota: ov.nota || '',
+    rimborsi, rimborsiTot, totale: escluso || opzione ? 0 : compenso + rimborsiTot,
+    issues: ov.ok || opzione ? [] : issues, info, status, multi, escluso, opzione, nota: ov.nota || '',
   };
 }
 
@@ -459,7 +462,7 @@ export function buildDays(events, data, range, today) {
 export function summarize(days, services, ym, data) {
   const by = new Map();
   for (const d of days) {
-    if (!d.date.startsWith(ym) || d.escluso || !d.serviceId) continue;
+    if (!d.date.startsWith(ym) || d.escluso || d.opzione || !d.serviceId) continue;
     if (!by.has(d.serviceId)) by.set(d.serviceId, []);
     by.get(d.serviceId).push(d);
   }
@@ -799,7 +802,7 @@ export function enpalsCompare(workDays, coopEvents, fromDate) {
   const opened = new Map();
   for (const e of coopEvents || []) if (e.data >= fromDate) opened.set(e.data, e);
   const work = new Map();
-  for (const d of workDays) if (!d.escluso && d.date >= fromDate && !work.has(d.date)) work.set(d.date, d);
+  for (const d of workDays) if (!d.escluso && !d.opzione && d.date >= fromDate && !work.has(d.date)) work.set(d.date, d);
   const mancanti = [...work.values()].filter(d => !opened.has(d.date)).sort((a, b) => a.date.localeCompare(b.date));
   const inPiu = [...opened.values()].filter(e => !work.has(e.data));
   const ok = [...work.values()].filter(d => opened.has(d.date)).length;
