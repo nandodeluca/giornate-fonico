@@ -431,7 +431,7 @@ function viewMore() {
     </div>
     <h2>Cooperativa</h2>
     <div class="card pad">
-      <label class="field" style="margin-top:0"><span>Trattenuta della cooperativa % (per le stime)</span><input type="number" inputmode="decimal" value="${esc(st.trattenutaCoop ?? 30)}" data-set="trattenutaCoop"></label>
+      <label class="field" style="margin-top:0"><span>Trattenuta della cooperativa % (per le stime)</span><input type="number" inputmode="decimal" value="${esc(st.trattenutaCoop ?? 32)}" data-set="trattenutaCoop"></label>
       <small class="muted">Quando la cooperativa ha già calcolato il "netto al socio" di una fattura, l'app usa quella cifra vera.</small>
       ${coop ? `<div id="coop-box" style="margin-top:14px"><div class="muted">Controllo il collegamento…</div></div>`
         : `<div class="note info">Le fatture e le giornate aperte vengono lette dal sito della cooperativa dall'app Windows, e arrivano qui tramite Drive.${store.data.coop?.aggiornatoIl ? ` Ultimo aggiornamento: ${esc(ago(store.data.coop.aggiornatoIl))}.` : ''}</div>`}
@@ -572,7 +572,7 @@ function viewForecast() {
   const fc = C.buildForecast(sumsByMonth, services(), store.data);
   const cur = thisMonth();
   const vis = fc.filter(m => m.mese >= shiftYM(cur, -2));
-  const tr = C.num(store.data.settings?.trattenutaCoop ?? 30);
+  const tr = C.num(store.data.settings?.trattenutaCoop ?? 32);
   let h = loadingLine() + coopLine();
   h += `<div class="note info">Incasso = ultimo giorno del mese, secondo i giorni di pagamento di ogni service (in Service). Netto <b>✓</b> = cifra vera della cooperativa; <b>~</b> = stima con trattenuta ${tr}%. I rimborsi sono a parte.</div>`;
   if (!vis.length) h += `<div class="card"><div class="empty"><b>Niente da mostrare</b>Non ci sono giornate nei mesi letti.</div></div>`;
@@ -603,7 +603,7 @@ function viewPayments() {
   const scadute = list.filter(f => f.stato === 'scaduta');
   const attesa = list.filter(f => f.stato === 'attesa');
   const pagate = list.filter(f => f.stato === 'pagata');
-  const tot = arr => arr.reduce((a, f) => a + (f.netto ?? (f.imponibile || 0) * (1 - C.num(store.data.settings?.trattenutaCoop ?? 30) / 100)), 0);
+  const tot = arr => arr.reduce((a, f) => a + (f.netto ?? (f.imponibile || 0) * (1 - C.num(store.data.settings?.trattenutaCoop ?? 32) / 100)), 0);
   h += `<div class="card"><div class="kpis">
       <div class="kpi"><div class="v" style="color:var(--bad)">${scadute.length}</div><div class="l">in ritardo · ~${esc(C.eur(tot(scadute)))}</div></div>
       <div class="kpi"><div class="v">${attesa.length}</div><div class="l">in attesa · ~${esc(C.eur(tot(attesa)))}</div></div>
@@ -646,7 +646,7 @@ function viewEnpals() {
     <div class="btn-row" style="margin-top:8px"><button class="btn primary" data-act="copy-enpals" data-text="${esc(mailText)}">Copia elenco per la mail</button></div>`;
   if (pas.length) h += `<h2>Passate senza giornata aperta (${pas.length})</h2><div class="card">${pas.map(rowW).join('')}</div>`;
   if (!r.mancanti.length) h += `<div class="card"><div class="empty"><b>Tutto a posto</b>Tutte le giornate di lavoro del calendario risultano aperte.</div></div>`;
-  if (r.inPiu.length) h += `<h2>Aperte ma non nel calendario (${r.inPiu.length})</h2><div class="card">${r.inPiu.map(e => `<div class="list-row"><span class="grow"><div><b>${esc(C.dateLabel(e.data))}</b> · ${esc(e.luogo)}</div><div class="muted">Controlla se manca l'evento sul calendario o se è un errore</div></span></div>`).join('')}</div>`;
+  if (r.inPiu.length) h += `<h2>Aperte ma non nel calendario (${r.inPiu.length})</h2><div class="card">${r.inPiu.map(e => `<div class="list-row"><span class="grow"><div><b>${esc(C.dateLabel(e.data))}</b> · ${esc(e.luogo)}</div><div class="muted">Non c'è sul calendario: manca l'evento, oppure è una giornata aperta senza lavoro</div></span></div>`).join('')}</div>`;
   return h;
 }
 

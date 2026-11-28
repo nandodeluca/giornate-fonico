@@ -51,6 +51,13 @@ export const store = {
     store.meta.dirty = true;
     try { localStorage.setItem('gf.data', JSON.stringify(store.data)); } catch { /* niente */ }
   }
+  const st3 = store.data.settings || {};
+  if (!st3.migr3) {
+    // stima della trattenuta della cooperativa indicata da Fernando
+    store.data.settings = { ...st3, trattenutaCoop: 32, migr3: true, updatedAt: Date.now() };
+    store.meta.dirty = true;
+    try { localStorage.setItem('gf.data', JSON.stringify(store.data)); } catch { /* niente */ }
+  }
 })();
 
 export function onChange(fn) { store.listeners.add(fn); }

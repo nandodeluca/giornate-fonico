@@ -559,7 +559,7 @@ export function emptyData() {
     services: [],
     days: {},
     invoices: {},
-    settings: { iva: 22, ignora: ['sost'], migr1: true, trattenutaCoop: 30, updatedAt: 0 },
+    settings: { iva: 22, ignora: ['sost'], migr1: true, trattenutaCoop: 32, migr2: true, migr3: true, updatedAt: 0 },
     coop: null,
   };
 }
@@ -749,7 +749,7 @@ export function coopInvoiceFor(coop, services, serviceId, ym) {
  * sumsByMonth: { 'YYYY-MM': [summarize(...)] }
  */
 export function buildForecast(sumsByMonth, services, data) {
-  const trattenuta = hasValue(data?.settings?.trattenutaCoop) ? num(data.settings.trattenutaCoop) : 30;
+  const trattenuta = hasValue(data?.settings?.trattenutaCoop) ? num(data.settings.trattenutaCoop) : 32;
   const rows = [];
   for (const [ym, sums] of Object.entries(sumsByMonth)) {
     for (const s of sums) {
