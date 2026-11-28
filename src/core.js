@@ -212,11 +212,21 @@ export function parseExpenses(text) {
 }
 
 // Cifra netta di un concerto scritta nell'evento: "150 €", "€150", "150 euro", "cachet 150", "netto 150"
-export function parseConcertFee(text) {
+export function parseConcertFee(text, allowBare = false) {
   const t = stripHtml(text || '');
   const m = t.match(/€\s*(\d+(?:[.,]\d{1,2})?)/) || t.match(/(\d+(?:[.,]\d{1,2})?)\s*(?:€|euro\b|eur\b)/i)
     || t.match(/\b(?:cachet|netto|compenso)\s*:?\s*(\d+(?:[.,]\d{1,2})?)/i);
-  return m ? num(m[1]) : null;
+  if (m) return num(m[1]);
+  if (!allowBare) return null;
+  // nella descrizione basta il numero ("80"); si saltano gli orari ("21:00", "h 21")
+  const re = /(?<![\d:.,/h])(\d{1,4}(?:,\d{1,2})?)(?!\d|\s*[:.]\d|\s*(?:ore|h)\b)/gi;
+  let b;
+  while ((b = re.exec(t)) !== null) {
+    const before = t.slice(Math.max(0, b.index - 3), b.index);
+    if (/h\.?\s*$/i.test(before)) continue;
+    return num(b[1]);
+  }
+  return null;
 }
 
 // ---------- service ----------
@@ -338,10 +348,10 @@ export function computeDay(ctx) {
   const concerto = service?.tipo === 'concerti';
   if (concerto) {
     tipo = 'concerto';
-    const fee = parseConcertFee(desc) ?? parseConcertFee(ev.summary);
+    const fee = parseConcertFee(desc, true) ?? parseConcertFee(ev.summary);
     base = fee ?? 0;
     if (fee == null && !hasValue(ov.compenso) && date <= today && !/\?{3,}/.test(ev.summary || '')) {
-      issues.push({ code: 'cachet', text: 'Concerto senza cifra: scrivila nell\'evento (es. "150 €") o inseriscila qui' });
+      issues.push({ code: 'cachet', text: 'Concerto senza cifra: scrivila nella descrizione dell\'evento (es. "80") o inseriscila qui' });
     }
   } else if (service) {
     const tariffa = num(service.tariffa);

@@ -572,7 +572,7 @@ function viewConcerts() {
       <div class="kpi"><div class="v">${fatti}</div><div class="l">concerti fatti</div></div>
       <div class="kpi"><div class="v">${prossimi.length}</div><div class="l">in programma</div></div>
     </div></div>
-    <div class="note info">Sono gli eventi con il colore ${esc(C.GOOGLE_COLORS[cSvc?.colorId]?.name || 'dei concerti')}. Scrivi la cifra netta nell'evento (es. "150 €"). Sono contati a parte: niente fatture, prospetto o ENPALS.</div>`;
+    <div class="note info">Sono gli eventi con il colore ${esc(C.GOOGLE_COLORS[cSvc?.colorId]?.name || 'dei concerti')}. Scrivi la cifra netta nella descrizione dell'evento (basta il numero, es. "80"). Sono contati a parte: niente fatture, prospetto o ENPALS.</div>`;
   const row = d => `<button class="list-row" data-act="day-any" data-key="${esc(d.key)}" data-ym="${d.date.slice(0, 7)}"><span class="sw" style="background:${colorOf(cSvc)}"></span>
     <span class="grow"><div><b>${esc(C.dateLabel(d.date))}</b> · ${esc(d.place || 'Concerto')}</div></span>
     <span class="amt">${d.compenso ? esc(C.eur(d.compenso)) : '<span class="badge warn">cifra?</span>'}</span></button>`;

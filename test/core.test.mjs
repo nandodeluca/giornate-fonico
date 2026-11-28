@@ -228,3 +228,11 @@ test('concerti: cifra netta dall\'evento, conteggio a parte', () => {
   assert.equal(cs[0].senzaCifra, 1);
   assert.deepEqual(C.enpalsCompare(days, [], '2026-12-01').mancanti.map(d => d.date), ['2026-12-03']);
 });
+
+test('concerti: basta il numero nella descrizione', () => {
+  assert.equal(C.parseConcertFee('80', true), 80);
+  assert.equal(C.parseConcertFee('soundcheck 18:00 - 80', true), 80);
+  assert.equal(C.parseConcertFee('h 21 / 120 netti', true), 120);
+  assert.equal(C.parseConcertFee('80', false), null);
+  assert.equal(C.parseConcertFee('Sigla! @ Bonaventura (MI)', true), null);
+});
