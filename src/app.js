@@ -585,7 +585,7 @@ function viewForecast() {
   if (!vis.length) h += `<div class="card"><div class="empty"><b>Niente da mostrare</b>Non ci sono giornate nei mesi letti.</div></div>`;
   for (const m of vis) {
     const past = m.mese < cur;
-    h += `<h2 style="display:flex;justify-content:space-between;gap:8px"><span style="text-transform:capitalize">${esc(C.monthLabel(m.mese))}${m.mese === cur ? ' · questo mese' : ''}</span><span>${esc(C.eur(m.netto))}${m.rimborsi ? ` + ${esc(C.eur(m.rimborsi))} rimb.` : ''}</span></h2>
+    h += `<h2 style="display:flex;justify-content:space-between;gap:8px"><span>Scadenza fine <span style="text-transform:capitalize">${esc(C.monthLabel(m.mese))}</span>${m.mese === cur ? ' · questo mese' : ''}</span><span>${esc(C.eur(m.netto))}${m.rimborsi ? ` + ${esc(C.eur(m.rimborsi))} rimb.` : ''}</span></h2>
       <div class="card">${m.righe.map(r => {
         let badge;
         if (r.coop?.pagata) badge = '<span class="badge good">pagata</span>';
