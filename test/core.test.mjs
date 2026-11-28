@@ -136,3 +136,53 @@ test('versioni', () => {
   assert.ok(C.isNewerVersion('v1.0.10', '1.0.9'));
   assert.ok(!C.isNewerVersion('1.0.0', '1.0.0'));
 });
+
+test('scadenze di pagamento a fine mese', () => {
+  assert.equal(C.paymentMonth('2026-09', 30), '2026-10');
+  assert.equal(C.paymentMonth('2026-09', 60), '2026-11');
+  assert.equal(C.paymentMonth('2026-11', 90), '2027-02');
+  assert.equal(C.lastDayOfMonth('2027-02'), '2027-02-28');
+});
+
+test('clienti della cooperativa -> service', () => {
+  const sv = [
+    { id: 'on', name: 'ONAIR', keywords: ['onair', 'on air'] },
+    { id: 'ad', name: 'AD MANAGEMENT', keywords: ['ad management', 'a&l'] },
+    { id: 'te', name: 'TECNO CONFERENCE', keywords: ['tecno'], fatturazione: { ragioneSociale: 'Tecnoconference S.r.l.' } },
+  ];
+  assert.equal(C.serviceForClient('ON AIR MULTIMEDIA SRL', sv).id, 'on');
+  assert.equal(C.serviceForClient('AD MANAGEMENT SRL', sv).id, 'ad');
+  assert.equal(C.serviceForClient('TECNOCONFERENCE S.R.L.', sv).id, 'te');
+  assert.equal(C.serviceForClient('ALTRO CLIENTE', sv), null);
+});
+
+test('lettura righe fatture e eventi della cooperativa', () => {
+  const f = C.parseCoopInvoices([
+    { cls: 'bg-success-subtle', cells: ['F', 'ALFA SRL', 'TEATRO X [09/05-09/05 ] ', '13/05/2026', '1065', '250,00', '157,91'] },
+    { cls: '', cells: ['F', 'BETA SRL', 'HOTEL Y [24/12-24/12 ] HOTEL Y [30/12-30/12 ]', '08/01/2027', '12', '1.312,00', ''] },
+  ]);
+  assert.equal(f.length, 2);
+  assert.deepEqual([f[0].pagata, f[0].imponibile, f[0].netto, f[0].meseLavoro], [true, 250, 157.91, '2026-05']);
+  assert.deepEqual([f[1].pagata, f[1].imponibile, f[1].netto, f[1].meseLavoro], [false, 1312, null, '2026-12']);
+  const e = C.parseCoopEvents([{ cells: ['', '01/12/26', 'HOTEL QUARK', 'HOTEL...', '', '150'] }]);
+  assert.deepEqual(e, [{ data: '2026-12-01', luogo: 'HOTEL QUARK' }]);
+});
+
+test('prospetto incassi: stimato e reale', () => {
+  const svc = { id: 'on', name: 'ONAIR', keywords: ['onair', 'on air'], pagamentoGiorni: 60 };
+  const sums = { '2026-10': [{ service: svc, compensi: 2600, rimborsi: 20, giornate: 10, previste: 0 }], '2026-11': [{ service: svc, compensi: 1000, rimborsi: 0, giornate: 4, previste: 1 }] };
+  const data = { settings: { trattenutaCoop: 30 }, coop: { fatture: [{ numero: '2833', cliente: 'ON AIR MULTIMEDIA SRL', tipo: 'F', meseLavoro: '2026-10', netto: 1641.12, pagata: false }] } };
+  const fc = C.buildForecast(sums, [svc], data);
+  assert.deepEqual(fc.map(m => m.mese), ['2026-12', '2027-01']);
+  assert.equal(fc[0].netto, 1641.12);
+  assert.equal(fc[0].righe[0].nettoReale, true);
+  assert.equal(fc[0].rimborsi, 0);
+  assert.equal(fc[1].netto, 700);
+});
+
+test('giornate aperte dalla cooperativa vs calendario', () => {
+  const work = [{ date: '2026-12-01' }, { date: '2026-12-02' }, { date: '2026-12-05', escluso: true }];
+  const r = C.enpalsCompare(work, [{ data: '2026-12-01', luogo: 'Q' }, { data: '2026-12-09', luogo: 'Z' }], '2026-11-01');
+  assert.deepEqual(r.mancanti.map(d => d.date), ['2026-12-02']);
+  assert.deepEqual(r.inPiu.map(e => e.data), ['2026-12-09']);
+});

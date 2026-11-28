@@ -1,5 +1,5 @@
 // App Windows: finestra + accesso Google con il browser predefinito (anche DuckDuckGo).
-const { app, BrowserWindow, ipcMain, shell, safeStorage, dialog, net, Menu } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, safeStorage, dialog, net, Menu, session } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const http = require('http');
@@ -114,6 +114,75 @@ async function getToken() {
     throw e;
   }
 }
+
+// ---------- Cooperativa (Crew Logic) ----------
+// Nome utente e password li inserisce Fernando nell'app: restano cifrati solo su questo PC.
+const COOP_BASE = 'https://app.technicalnetwork.it';
+const COOP_FILE = () => path.join(app.getPath('userData'), 'cooperativa.bin');
+const coopSession = () => session.fromPartition('persist:cooperativa');
+
+function saveCoop(obj) {
+  const raw = JSON.stringify(obj);
+  fs.writeFileSync(COOP_FILE(), safeStorage.isEncryptionAvailable() ? safeStorage.encryptString(raw) : Buffer.from(raw, 'utf8'));
+}
+function loadCoop() {
+  try {
+    const data = fs.readFileSync(COOP_FILE());
+    return JSON.parse(safeStorage.isEncryptionAvailable() ? safeStorage.decryptString(data) : data.toString('utf8'));
+  } catch { return null; }
+}
+
+function looksLikeLogin(text, url) {
+  return /Validate\.jsp/i.test(text) && /name=["']?pass/i.test(text) || /\/index\.jsp$/i.test(url || '');
+}
+
+async function coopLogin() {
+  const c = loadCoop();
+  if (!c?.user || !c?.pass) throw new Error('mancano le credenziali');
+  const s = coopSession();
+  await s.fetch(`${COOP_BASE}/index.jsp`); // prende il cookie di sessione
+  const body = new URLSearchParams({ user: c.user, pass: c.pass }).toString();
+  const r = await s.fetch(`${COOP_BASE}/jsp/Admin/Validate.jsp`, {
+    method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body, redirect: 'follow',
+  });
+  const t = await r.text();
+  if (looksLikeLogin(t, r.url)) throw new Error('accesso rifiutato: controlla nome utente e password');
+  return true;
+}
+
+async function coopGet(pathAndQuery) {
+  const s = coopSession();
+  const url = COOP_BASE + pathAndQuery;
+  let r = await s.fetch(url, { redirect: 'follow' });
+  let t = await r.text();
+  if (looksLikeLogin(t, r.url) || r.status === 401 || r.status === 403) {
+    await coopLogin();
+    r = await s.fetch(url, { redirect: 'follow' });
+    t = await r.text();
+    if (looksLikeLogin(t, r.url)) throw new Error('sessione non valida');
+  }
+  return t;
+}
+
+ipcMain.handle('coopStatus', () => { const c = loadCoop(); return { configured: !!(c?.user && c?.pass), user: c?.user || '' }; });
+ipcMain.handle('coopSave', async (_e, user, pass) => {
+  saveCoop({ user: String(user || '').trim(), pass: String(pass || '') });
+  try { await coopLogin(); return { ok: true }; } catch (e) { return { ok: false, error: e.message }; }
+});
+ipcMain.handle('coopForget', async () => {
+  try { fs.unlinkSync(COOP_FILE()); } catch { /* già tolto */ }
+  await coopSession().clearStorageData();
+  return true;
+});
+ipcMain.handle('coopFetch', async (_e, which, da, a) => {
+  const pages = {
+    fatture: '/jsp/Master/fatture_operatore.jsp?offset=0&data=true&orderBy=t_fatture.num&orderType=asc&fs=true&type=l',
+    eventi: '/jsp/Master/eventi_operatori.jsp?offset=0&data=true&orderBy=t_eventi.idutente&orderType=asc&fs=true&type=l',
+  };
+  if (!pages[which]) throw new Error('pagina sconosciuta');
+  const q = new URLSearchParams({ da, a, ricerca: '', limit: '1000', filterColumns: '' }).toString();
+  return coopGet(`${pages[which]}&${q}`);
+});
 
 ipcMain.on('configured', e => { e.returnValue = !!(GOOGLE.clientId && GOOGLE.clientSecret); });
 ipcMain.handle('signIn', () => signIn());

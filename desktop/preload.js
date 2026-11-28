@@ -9,4 +9,8 @@ contextBridge.exposeInMainWorld('desktop', {
   http: req => ipcRenderer.invoke('http', req),
   openExternal: url => ipcRenderer.invoke('openExternal', url),
   saveFile: (name, content) => ipcRenderer.invoke('saveFile', name, content),
+  coopStatus: () => ipcRenderer.invoke('coopStatus'),
+  coopSave: (user, pass) => ipcRenderer.invoke('coopSave', user, pass),
+  coopForget: () => ipcRenderer.invoke('coopForget'),
+  coopFetch: (which, da, a) => ipcRenderer.invoke('coopFetch', which, da, a),
 });

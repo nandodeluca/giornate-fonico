@@ -1,6 +1,6 @@
 // Dati dell'app: copia locale (funziona offline) + copia su Google Drive (cartella nascosta dell'app),
 // e lettura degli eventi da Google Calendar.
-import { http, getToken } from './platform.js';
+import { http, getToken, coop } from './platform.js';
 import { mergeData, normalizeData, sameData, emptyData, uid } from './core.js';
 import { CONFIG } from './config.js';
 
@@ -33,6 +33,21 @@ export const store = {
     const ign = new Set((st.ignora || []).map(x => String(x).toLowerCase()));
     ign.add('sost'); // "SOST" nel titolo = ho mandato un sostituto: non si conteggia
     store.data.settings = { ...st, ignora: [...ign], migr1: true, updatedAt: Date.now() };
+    store.meta.dirty = true;
+    try { localStorage.setItem('gf.data', JSON.stringify(store.data)); } catch { /* niente */ }
+  }
+  const st2 = store.data.settings || {};
+  if (!st2.migr2) {
+    // termini di pagamento indicati da Fernando (fine mese lavoro + N giorni)
+    const termini = { congress: 30, sigma: 30, onair: 60, tecno: 90, bsound: 60 };
+    const now = Date.now();
+    for (const s of store.data.services) {
+      if (s.pagamentoGiorni === undefined || s.pagamentoGiorni === '') {
+        s.pagamentoGiorni = termini[s.id] ?? 30;
+        s.updatedAt = now;
+      }
+    }
+    store.data.settings = { ...st2, trattenutaCoop: st2.trattenutaCoop ?? 30, migr2: true, updatedAt: now };
     store.meta.dirty = true;
     try { localStorage.setItem('gf.data', JSON.stringify(store.data)); } catch { /* niente */ }
   }
@@ -265,4 +280,30 @@ export async function checkUpdate() {
     apk: assets.find(a => /\.apk$/i.test(a.name))?.browser_download_url,
     exe: assets.find(a => /\.exe$/i.test(a.name))?.browser_download_url,
   };
+}
+
+// ---------- cooperativa (Crew Logic): letta dall'app Windows, salvata su Drive per tutti i dispositivi ----------
+
+function htmlRows(html) {
+  const d = new DOMParser().parseFromString(`<table><tbody>${html}</tbody></table>`, 'text/html');
+  return [...d.querySelectorAll('tr')].map(tr => {
+    const tds = [...tr.querySelectorAll('td')];
+    const cells = tds.map(td => td.textContent.trim().replace(/\s+/g, ' '));
+    const ev = tds[2] ? tds[2].innerHTML.split(/<br\s*\/?>/i).map(x => x.replace(/<[^>]+>/g, '').trim()).join('\n') : '';
+    return { cls: tr.className || '', cells, eventiText: ev };
+  }).filter(r => r.cells.length);
+}
+
+export async function syncCoop(parsers) {
+  if (!coop) throw new Error('disponibile solo nell\'app Windows');
+  const y = new Date().getFullYear();
+  const da = `01/01/${y - 1}`, a = `31/12/${y + 1}`;
+  const fh = await coop.fetchPage('fatture', da, a);
+  const eh = await coop.fetchPage('eventi', da, a);
+  const fatture = parsers.parseCoopInvoices(htmlRows(fh));
+  const eventi = parsers.parseCoopEvents(htmlRows(eh));
+  if (!fatture.length && !eventi.length) throw new Error('nessun dato letto: la pagina potrebbe essere cambiata');
+  store.data.coop = { fatture, eventi, aggiornatoIl: Date.now(), updatedAt: Date.now() };
+  saveLocal(); emit(); scheduleSync();
+  return { fatture: fatture.length, eventi: eventi.length };
 }

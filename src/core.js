@@ -559,7 +559,8 @@ export function emptyData() {
     services: [],
     days: {},
     invoices: {},
-    settings: { iva: 22, ignora: ['sost'], migr1: true, updatedAt: 0 },
+    settings: { iva: 22, ignora: ['sost'], migr1: true, trattenutaCoop: 30, updatedAt: 0 },
+    coop: null,
   };
 }
 
@@ -572,6 +573,7 @@ export function normalizeData(d) {
     days: d.days && typeof d.days === 'object' ? d.days : {},
     invoices: d.invoices && typeof d.invoices === 'object' ? d.invoices : {},
     settings: Object.assign(e.settings, d.settings || {}),
+    coop: d.coop && typeof d.coop === 'object' ? d.coop : null,
   };
 }
 
@@ -592,6 +594,7 @@ export function mergeData(local, remote) {
   for (const k of new Set([...Object.keys(L.days), ...Object.keys(R.days)])) out.days[k] = newer(L.days[k], R.days[k]);
   for (const k of new Set([...Object.keys(L.invoices), ...Object.keys(R.invoices)])) out.invoices[k] = newer(L.invoices[k], R.invoices[k]);
   out.settings = newer(L.settings, R.settings);
+  out.coop = newer(L.coop, R.coop) || null;
   return out;
 }
 
@@ -608,4 +611,197 @@ export function isNewerVersion(remote, local) {
     if ((a[i] || 0) < (b[i] || 0)) return false;
   }
   return false;
+}
+
+// ---------- incassi, cooperativa, giornate ENPALS ----------
+
+export function lastDayOfMonth(ym) {
+  const [y, m] = ym.split('-').map(Number);
+  return toISODate(new Date(y, m, 0));
+}
+
+export function addMonthsYM(ym, n) {
+  const [y, m] = ym.split('-').map(Number);
+  const d = new Date(y, m - 1 + n, 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
+/** Mese in cui il cliente paga: fine mese del lavoro + N giorni, sempre all'ultimo giorno del mese. */
+export function paymentMonth(workYM, giorni) {
+  const months = Math.max(0, Math.round(num(giorni || 30) / 30));
+  return addMonthsYM(workYM, months);
+}
+
+function compact(s) {
+  return norm(s).replace(/[^a-z0-9]/g, '');
+}
+
+/** A quale service appartiene un cliente della cooperativa ("ON AIR MULTIMEDIA SRL" -> ONAIR) */
+export function serviceForClient(cliente, services) {
+  const c = compact(cliente);
+  if (!c) return null;
+  let best = null, bestLen = 0;
+  for (const s of services) {
+    if (s.deleted) continue;
+    const cands = [...(s.keywords || []), s.name, s.fatturazione?.ragioneSociale, ...(s.clientiCoop || [])];
+    for (const k of cands) {
+      const kk = compact(k);
+      if (kk.length < 3) continue;
+      if (c.startsWith(kk) || (kk.length >= 6 && c.includes(kk))) {
+        if (kk.length > bestLen) { best = s; bestLen = kk.length; }
+      }
+    }
+  }
+  return best;
+}
+
+function itNum(s) {
+  const t = String(s || '').replace(/\s/g, '').replace(/\./g, '').replace(',', '.');
+  if (!t) return null;
+  const n = parseFloat(t);
+  return isNaN(n) ? null : n;
+}
+
+function itDate(s) {
+  const m = String(s || '').match(/(\d{1,2})\/(\d{1,2})\/(\d{2,4})/);
+  if (!m) return null;
+  const y = m[3].length === 2 ? '20' + m[3] : m[3];
+  return `${y}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`;
+}
+
+/**
+ * Righe della pagina "Le mie fatture" di Crew Logic.
+ * rows: [{cls, cells:[testo...], eventiHtml}]
+ */
+export function parseCoopInvoices(rows) {
+  const out = [];
+  for (const r of rows) {
+    const c = r.cells;
+    if (!c || c.length < 7) continue;
+    const data = itDate(c[3]);
+    const numero = String(c[4] || '').trim();
+    if (!data || !numero) continue;
+    const anno = data.slice(0, 4);
+    const eventi = [];
+    const re = /([^\[\n]+?)\s*\[(\d{1,2})\/(\d{1,2})-(\d{1,2})\/(\d{1,2})([^\]]*)\]/g;
+    let m;
+    const txt = String(r.eventiText || c[2] || '');
+    while ((m = re.exec(txt)) !== null) {
+      // l'anno dell'evento: quello della fattura, o il precedente se il mese è dopo quello della fattura
+      let y = Number(anno);
+      if (Number(m[3]) > Number(data.slice(5, 7)) + 1) y -= 1;
+      const da = `${y}-${m[3].padStart(2, '0')}-${m[2].padStart(2, '0')}`;
+      eventi.push({ nome: m[1].trim(), data: da, note: m[6].trim() });
+    }
+    eventi.sort((a, b) => a.data.localeCompare(b.data));
+    const tipo = /nc/i.test(c[0]) ? 'NC' : 'F';
+    out.push({
+      numero, data, cliente: String(c[1] || '').trim(), tipo,
+      imponibile: itNum(c[5]), netto: itNum(c[6]),
+      pagata: /success/.test(r.cls || ''),
+      eventi,
+      meseLavoro: mostCommonMonth(eventi.map(e => e.data)) || data.slice(0, 7),
+    });
+  }
+  return out;
+}
+
+function mostCommonMonth(dates) {
+  const cnt = new Map();
+  for (const d of dates) cnt.set(d.slice(0, 7), (cnt.get(d.slice(0, 7)) || 0) + 1);
+  let best = null, n = 0;
+  for (const [k, v] of cnt) if (v > n || (v === n && k > best)) { best = k; n = v; }
+  return best;
+}
+
+/** Righe della pagina "I miei eventi": giornate aperte */
+export function parseCoopEvents(rows) {
+  const out = [];
+  for (const r of rows) {
+    const c = r.cells;
+    if (!c) continue;
+    const di = c.findIndex(x => /^\d{1,2}\/\d{1,2}\/\d{2,4}$/.test(String(x).trim()));
+    if (di < 0) continue;
+    const data = itDate(c[di]);
+    out.push({ data, luogo: String(c[di + 1] || '').trim() });
+  }
+  out.sort((a, b) => a.data.localeCompare(b.data));
+  return out;
+}
+
+/** Fattura della cooperativa per un service e un mese di lavoro */
+export function coopInvoiceFor(coop, services, serviceId, ym) {
+  if (!coop?.fatture) return null;
+  const list = coop.fatture.filter(f => f.tipo !== 'NC' && f.meseLavoro === ym && serviceForClient(f.cliente, services)?.id === serviceId);
+  if (!list.length) return null;
+  if (list.length === 1) return list[0];
+  return {
+    ...list[0],
+    numero: list.map(f => f.numero).join(' + '),
+    imponibile: list.reduce((a, f) => a + (f.imponibile || 0), 0),
+    netto: list.every(f => f.netto != null) ? list.reduce((a, f) => a + f.netto, 0) : null,
+    pagata: list.every(f => f.pagata),
+  };
+}
+
+/**
+ * Prospetto incassi: per ogni mese di lavoro e service, quanto entra e in che mese.
+ * sumsByMonth: { 'YYYY-MM': [summarize(...)] }
+ */
+export function buildForecast(sumsByMonth, services, data) {
+  const trattenuta = hasValue(data?.settings?.trattenutaCoop) ? num(data.settings.trattenutaCoop) : 30;
+  const rows = [];
+  for (const [ym, sums] of Object.entries(sumsByMonth)) {
+    for (const s of sums) {
+      const giorni = hasValue(s.service.pagamentoGiorni) ? num(s.service.pagamentoGiorni) : 30;
+      const pm = paymentMonth(ym, giorni);
+      const inv = coopInvoiceFor(data?.coop, services, s.service.id, ym);
+      const stimato = round2(s.compensi * (1 - trattenuta / 100));
+      const reale = inv && inv.netto != null ? round2(inv.netto) : null;
+      rows.push({
+        ym, service: s.service, giorni, pagamento: pm, scadenza: lastDayOfMonth(pm),
+        compensi: s.compensi, rimborsi: s.rimborsi,
+        netto: reale ?? stimato, nettoReale: reale != null, nettoStimato: stimato,
+        // se il netto è quello vero della cooperativa, i rimborsi sono già dentro
+        rimborsiSeparati: reale != null ? 0 : s.rimborsi,
+        previste: s.previste, giornate: s.giornate,
+        coop: inv,
+      });
+    }
+  }
+  const byPay = new Map();
+  for (const r of rows) {
+    if (!byPay.has(r.pagamento)) byPay.set(r.pagamento, []);
+    byPay.get(r.pagamento).push(r);
+  }
+  return [...byPay.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([pm, list]) => ({
+    mese: pm,
+    righe: list.sort((a, b) => a.ym.localeCompare(b.ym) || String(a.service.name).localeCompare(String(b.service.name))),
+    netto: round2(list.reduce((a, r) => a + r.netto, 0)),
+    rimborsi: round2(list.reduce((a, r) => a + r.rimborsiSeparati, 0)),
+    pagato: list.every(r => r.coop?.pagata),
+  }));
+}
+
+/** Stato di ogni fattura della cooperativa rispetto alla scadenza */
+export function paymentsStatus(coop, services, today) {
+  return (coop?.fatture || []).map(f => {
+    const s = serviceForClient(f.cliente, services);
+    const giorni = s && hasValue(s.pagamentoGiorni) ? num(s.pagamentoGiorni) : 30;
+    const scadenza = lastDayOfMonth(paymentMonth(f.meseLavoro, giorni));
+    const ritardo = !f.pagata && today > scadenza ? Math.round((new Date(today + 'T12:00:00') - new Date(scadenza + 'T12:00:00')) / 86400000) : 0;
+    return { ...f, service: s, giorni, scadenza, ritardo, stato: f.pagata ? 'pagata' : ritardo > 0 ? 'scaduta' : 'attesa' };
+  }).sort((a, b) => b.data.localeCompare(a.data) || String(b.numero).localeCompare(String(a.numero)));
+}
+
+/** Confronto giornate di lavoro (calendario) e giornate aperte dalla cooperativa */
+export function enpalsCompare(workDays, coopEvents, fromDate) {
+  const opened = new Map();
+  for (const e of coopEvents || []) if (e.data >= fromDate) opened.set(e.data, e);
+  const work = new Map();
+  for (const d of workDays) if (!d.escluso && d.date >= fromDate && !work.has(d.date)) work.set(d.date, d);
+  const mancanti = [...work.values()].filter(d => !opened.has(d.date)).sort((a, b) => a.date.localeCompare(b.date));
+  const inPiu = [...opened.values()].filter(e => !work.has(e.data));
+  const ok = [...work.values()].filter(d => opened.has(d.date)).length;
+  return { mancanti, inPiu, ok, lavorate: work.size, aperte: opened.size };
 }

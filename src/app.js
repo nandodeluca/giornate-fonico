@@ -2,9 +2,9 @@
 import * as C from './core.js';
 import {
   store, onChange, setMeta, fetchMonthEvents, cachedMonthEvents, syncData, updateDay, resetDay,
-  saveService, deleteService, setInvoice, setSettings, importFile, exportBackup, clearLocal, checkUpdate,
+  saveService, deleteService, setInvoice, setSettings, importFile, exportBackup, clearLocal, checkUpdate, syncCoop,
 } from './store.js';
-import { PLATFORM, APP_VERSION, signIn, signOut, isConfigured, shareText, copyText, openExternal, saveTextFile } from './platform.js';
+import { PLATFORM, APP_VERSION, signIn, signOut, isConfigured, shareText, copyText, openExternal, saveTextFile, coop } from './platform.js';
 
 const $app = document.getElementById('app');
 const $sheet = document.getElementById('sheet-root');
@@ -20,6 +20,10 @@ applyTheme();
 
 const ui = {
   view: lsGetStr('gf.view', 'griglia'),
+  page: null,          // pagine del menù: prospetto, pagamenti, enpals
+  monthsLoading: null, // {done, total}
+  coopBusy: false,
+  coopError: null,
   tab: 'giornate',
   ym: thisMonth(),
   events: {},        // ym -> items
@@ -99,22 +103,32 @@ function render() {
   const m = monthModel(ui.ym);
   const toCheck = m.days.filter(d => d.status === 'controllare').length;
   let body = '';
-  if (ui.tab === 'giornate') body = viewDays(m);
+  if (ui.page === 'prospetto') body = viewForecast();
+  else if (ui.page === 'pagamenti') body = viewPayments();
+  else if (ui.page === 'enpals') body = viewEnpals();
+  else if (ui.tab === 'giornate') body = viewDays(m);
   else if (ui.tab === 'fatture') body = viewInvoices(m);
   else if (ui.tab === 'service') body = viewServices();
   else body = viewMore();
-  const showMonth = ui.tab === 'giornate' || ui.tab === 'fatture';
+  const showMonth = !ui.page && (ui.tab === 'giornate' || ui.tab === 'fatture');
+  const PAGE_TITLES = { prospetto: 'Prospetto incassi', pagamenti: 'Pagamenti fatture', enpals: 'Giornate ENPALS' };
   $app.innerHTML = `
     ${ui.update ? `<div class="update"><span class="grow">Nuova versione <b>${esc(ui.update.version)}</b> disponibile</span><button class="btn small" data-act="get-update">Scarica</button></div>` : ''}
     ${store.meta.needLogin ? `<div class="update"><span class="grow">Google chiede di confermare di nuovo l'accesso</span><button class="btn small" data-act="login">Accedi</button></div>` : ''}
     <header class="top">
-      ${showMonth ? `
+      ${ui.page ? `
       <div class="top-row">
+        <button class="icon-btn" data-act="menu" aria-label="Menù">☰</button>
+        <div class="month">${esc(PAGE_TITLES[ui.page])}</div>
+        <button class="icon-btn" data-act="page-close" aria-label="Chiudi">✕</button>
+      </div>` : showMonth ? `
+      <div class="top-row">
+        <button class="icon-btn" data-act="menu" aria-label="Menù">☰</button>
         <button class="icon-btn" data-act="prev" aria-label="Mese precedente">‹</button>
         <div class="month" data-act="today">${esc(C.monthLabel(ui.ym))}</div>
         <button class="icon-btn" data-act="next" aria-label="Mese successivo">›</button>
         <button class="icon-btn" data-act="sync" aria-label="Aggiorna">${ui.loading || store.syncing ? '…' : '↻'}</button>
-      </div>` : `<div class="top-row"><div class="month">${ui.tab === 'service' ? 'Service' : 'Impostazioni'}</div></div>`}
+      </div>` : `<div class="top-row"><button class="icon-btn" data-act="menu" aria-label="Menù">☰</button><div class="month">${ui.tab === 'service' ? 'Service' : 'Impostazioni'}</div><span style="width:40px"></span></div>`}
       <div class="sync-line">${syncLine()}</div>
     </header>
     <main>${body}</main>
@@ -328,7 +342,8 @@ function viewNoServices() {
 
 const INV_STATES = { emessa: 'Emessa', pagata: 'Pagata' };
 
-function invBadge(inv) {
+function invBadge(inv, ci) {
+  if (!inv && ci) return ci.pagata ? `<span class="badge good">pagata · n. ${esc(ci.numero)}</span>` : `<span class="badge bad">emessa · n. ${esc(ci.numero)}</span>`;
   if (!inv) return '<span class="badge">da chiedere</span>';
   if (inv.stato === 'pagata') return `<span class="badge good">pagata${inv.numero ? ' · n. ' + esc(inv.numero) : ''}</span>`;
   return `<span class="badge bad">emessa${inv.numero ? ' · n. ' + esc(inv.numero) : ''}</span>`;
@@ -339,8 +354,9 @@ function viewInvoices(m) {
   if (!m.sums.length) h += `<div class="card"><div class="empty"><b>Nessuna fattura per questo mese</b>Non ci sono giornate di lavoro nei tuoi service.</div></div>`;
   for (const s of m.sums) {
     const inv = s.invoice;
+    const ci = C.coopInvoiceFor(store.data.coop, services(), s.service.id, ui.ym);
     h += `<div class="card">
-      <div class="inv-head"><span class="sw" style="background:${colorOf(s.service)};width:12px;height:12px"></span><span class="n">${esc(s.service.name)}</span>${invBadge(inv)}</div>
+      <div class="inv-head"><span class="sw" style="background:${colorOf(s.service)};width:12px;height:12px"></span><span class="n">${esc(s.service.name)}</span>${invBadge(inv, ci)}</div>
       <div class="inv-body">
         <div class="inv-grid">
           <span>${s.giornate} ${s.giornate === 1 ? 'giornata' : 'giornate'}${s.straord ? ` · ${s.straord} h extra` : ''}${s.doppie ? ` · ${s.doppie} doppie` : ''}${s.reperibilita ? ` · ${s.reperibilita} reperib.` : ''}</span><span class="r">${esc(C.eur(s.compensi))}</span>
@@ -350,6 +366,7 @@ function viewInvoices(m) {
         </div>
         ${s.daControllare ? `<div class="note warn">${s.daControllare} ${s.daControllare === 1 ? 'giornata da controllare' : 'giornate da controllare'} prima di chiedere la fattura.</div>` : ''}
         ${s.previste ? `<div class="note info">${s.previste} ${s.previste === 1 ? 'giornata ancora futura' : 'giornate ancora future'}.</div>` : ''}
+        ${ci && Math.abs((ci.imponibile || 0) - s.compensi - s.rimborsi) > 0.5 ? `<div class="note warn">Fattura della cooperativa n. ${esc(ci.numero)}: ${esc(C.eur(ci.imponibile || 0))}, l'app calcola ${esc(C.eur(s.compensi + s.rimborsi))} (compensi + rimborsi).</div>` : ''}
         ${s.cambiata ? `<div class="note bad">Attenzione: dopo l'emissione i conti sono cambiati (in fattura: ${esc(C.eur(inv.snapshot.compensi))} + ${esc(C.eur(inv.snapshot.rimborsi))} rimborsi).</div>` : ''}
         <div class="btn-row" style="margin-top:12px">
           <button class="btn" data-act="inv-text" data-id="${esc(s.service.id)}">Riepilogo</button>
@@ -389,7 +406,7 @@ function viewServices() {
 }
 
 function svcRuleText(s) {
-  const col = s.colorId ? C.GOOGLE_COLORS[s.colorId]?.name : 'nessun colore';
+  const col = (s.colorId ? C.GOOGLE_COLORS[s.colorId]?.name : 'nessun colore') + ` · paga a ${C.num(s.pagamentoGiorni || 30)} gg`;
   if (s.tipo === 'fissa') return `${C.eur(C.num(s.tariffa))} a giornata fissa · ${col}`;
   return `${C.eur(C.num(s.tariffa))} fino a ${C.num(s.oreIncluse)} h, poi ${C.eur(C.num(s.straordinario))}/h${C.num(s.doppiaDa) ? `, doppia dalla ${C.num(s.doppiaDa)}ª ora extra` : ''} · ${col}`;
 }
@@ -412,6 +429,13 @@ function viewMore() {
       <label class="field"><span>Parole da ignorare nel titolo</span><input type="text" value="${esc((st.ignora || []).join(', '))}" data-set="ignora" placeholder="es. sost">
       <small>Gli eventi con una di queste parole nel titolo non vengono conteggiati, anche se hanno il colore di un service. Separale con una virgola.</small></label>
     </div>
+    <h2>Cooperativa</h2>
+    <div class="card pad">
+      <label class="field" style="margin-top:0"><span>Trattenuta della cooperativa % (per le stime)</span><input type="number" inputmode="decimal" value="${esc(st.trattenutaCoop ?? 30)}" data-set="trattenutaCoop"></label>
+      <small class="muted">Quando la cooperativa ha già calcolato il "netto al socio" di una fattura, l'app usa quella cifra vera.</small>
+      ${coop ? `<div id="coop-box" style="margin-top:14px"><div class="muted">Controllo il collegamento…</div></div>`
+        : `<div class="note info">Le fatture e le giornate aperte vengono lette dal sito della cooperativa dall'app Windows, e arrivano qui tramite Drive.${store.data.coop?.aggiornatoIl ? ` Ultimo aggiornamento: ${esc(ago(store.data.coop.aggiornatoIl))}.` : ''}</div>`}
+    </div>
     <h2>Copia di sicurezza</h2>
     <div class="card pad">
       <div class="muted" style="font-size:13.5px">I dati sono già salvati sul tuo Google Drive. Qui puoi scaricarne una copia o reimportarla.</div>
@@ -423,6 +447,207 @@ function viewMore() {
       <div>Versione <b>${esc(APP_VERSION)}</b> · ${PLATFORM === 'windows' ? 'Windows' : PLATFORM === 'android' ? 'Android' : 'browser'}</div>
       <div class="btn-row" style="margin-top:10px"><button class="btn" data-act="check-update">Controlla aggiornamenti</button></div>
     </div>`;
+}
+
+// ---------- menù e pagine ----------
+
+function openMenu() {
+  const item = (id, ic, title, sub) => `<button class="list-row" data-page="${id}"><span style="font-size:20px;width:26px;text-align:center">${ic}</span>
+    <span class="grow"><div><b>${title}</b></div><div class="muted">${sub}</div></span><span class="muted">›</span></button>`;
+  openSheet(`<h3>Menù</h3><div class="sub">Strumenti</div>
+    <div class="card">
+      ${item('prospetto', '📅', 'Prospetto incassi', 'Quanto ti entra ogni mese, secondo i termini di pagamento')}
+      ${item('pagamenti', '✔', 'Pagamenti fatture', 'Fatture della cooperativa: pagate, in attesa, in ritardo')}
+      ${item('enpals', '🗂', 'Giornate ENPALS', 'Giornate aperte dalla cooperativa e quelle da far aprire')}
+    </div>
+    <div class="sheet-actions btn-row"><button class="btn" data-close-btn>Chiudi</button></div>`, sh => {
+    sh.addEventListener('click', e => {
+      const b = e.target.closest('[data-page]');
+      if (!b) return;
+      ui.page = b.dataset.page;
+      closeSheet(); render(); window.scrollTo(0, 0);
+      if (ui.page === 'prospetto') ensureMonths(forecastWorkMonths());
+      if (ui.page === 'enpals') ensureMonths(enpalsMonths());
+      if (coop && (ui.page === 'pagamenti' || ui.page === 'enpals' || ui.page === 'prospetto')) {
+        const at = store.data.coop?.aggiornatoIl || 0;
+        if (Date.now() - at > 30 * 60 * 1000) doCoopSync(false);
+      }
+    });
+  });
+}
+
+/** Legge dal calendario i mesi che mancano (o sono vecchi), uno alla volta */
+async function ensureMonths(list) {
+  if (ui.monthsLoading || !store.meta.email) return;
+  const todo = list.filter(ym => { const c = cachedMonthEvents(ym); return !c || Date.now() - c.at > 30 * 60 * 1000; });
+  if (!todo.length) return;
+  ui.monthsLoading = { done: 0, total: todo.length };
+  render();
+  for (const ym of todo) {
+    try { ui.events[ym] = await fetchMonthEvents(ym); } catch { /* resta la copia salvata */ }
+    ui.monthsLoading.done++;
+    if (ui.page) render();
+  }
+  ui.monthsLoading = null;
+  render();
+}
+
+function forecastWorkMonths() {
+  const cur = thisMonth();
+  const out = [];
+  for (let i = -5; i <= 3; i++) out.push(shiftYM(cur, i));
+  return out;
+}
+function enpalsMonths() {
+  const cur = thisMonth();
+  return [shiftYM(cur, -1), cur, shiftYM(cur, 1), shiftYM(cur, 2), shiftYM(cur, 3), shiftYM(cur, 4)];
+}
+
+function loadingLine() {
+  return ui.monthsLoading ? `<div class="note info">Leggo il calendario… (${ui.monthsLoading.done}/${ui.monthsLoading.total} mesi)</div>` : '';
+}
+
+function coopLine() {
+  const c = store.data.coop;
+  if (ui.coopBusy) return `<div class="note info">Leggo i dati dal sito della cooperativa…</div>`;
+  if (ui.coopError) return `<div class="note bad">Sito della cooperativa: ${esc(ui.coopError)}${coop ? ' · <a href="#" data-act="coop-sync">riprova</a>' : ''}</div>`;
+  if (!c) return coop
+    ? `<div class="note warn">Non hai ancora collegato il sito della cooperativa: vai in <b>Altro → Cooperativa</b>.</div>`
+    : `<div class="note warn">I dati della cooperativa arrivano dall'app Windows: collega il sito da lì (Altro → Cooperativa).</div>`;
+  return `<div class="note info">Dati cooperativa aggiornati ${esc(ago(c.aggiornatoIl))}${coop ? ' · <a href="#" data-act="coop-sync">aggiorna ora</a>' : ''}</div>`;
+}
+
+async function doCoopSync(manual) {
+  if (!coop || ui.coopBusy) return;
+  const st = await coop.status();
+  if (!st.configured) { if (manual) toast('Prima inserisci nome utente e password in Altro → Cooperativa'); return; }
+  ui.coopBusy = true; ui.coopError = null; render();
+  try {
+    const r = await syncCoop(C);
+    if (manual) toast(`Letti ${r.fatture} fatture e ${r.eventi} giornate`);
+  } catch (e) {
+    ui.coopError = e?.message || String(e);
+  } finally {
+    ui.coopBusy = false; render();
+  }
+}
+
+async function renderCoopBox(box) {
+  const st = await coop.status();
+  box.innerHTML = `
+    <div><b>Sito della cooperativa (Crew Logic)</b></div>
+    <div class="muted" style="font-size:13.5px">${st.configured ? `Collegato come <b>${esc(st.user)}</b>. ${store.data.coop?.aggiornatoIl ? 'Ultima lettura: ' + esc(ago(store.data.coop.aggiornatoIl)) + '.' : ''}` : 'Non collegato.'}
+      Nome utente e password restano cifrati solo su questo PC.</div>
+    <div class="grid2">
+      <label class="field"><span>Nome utente</span><input type="text" id="co-user" autocomplete="off" value="${esc(st.user || '')}"></label>
+      <label class="field"><span>Password</span><input type="password" id="co-pass" autocomplete="off" placeholder="${st.configured ? '••••••• (invariata)' : ''}"></label>
+    </div>
+    <div class="btn-row" style="margin-top:10px">
+      <button class="btn primary" id="co-save">${st.configured ? 'Aggiorna e prova' : 'Collega'}</button>
+      ${st.configured ? '<button class="btn" id="co-sync">Leggi ora</button><button class="btn danger" id="co-forget">Scollega</button>' : ''}
+    </div>`;
+  box.querySelector('#co-save').onclick = async () => {
+    const user = box.querySelector('#co-user').value.trim();
+    const pass = box.querySelector('#co-pass').value;
+    if (!user || (!pass && !st.configured)) return toast('Scrivi nome utente e password');
+    if (!pass) return toast('Per cambiare il collegamento riscrivi anche la password');
+    toast('Provo l\'accesso…');
+    const r = await coop.save(user, pass);
+    if (r.ok) { toast('Collegato'); await doCoopSync(true); } else toast('Accesso non riuscito: ' + r.error, 5000);
+    render();
+  };
+  const sy = box.querySelector('#co-sync');
+  if (sy) sy.onclick = () => doCoopSync(true);
+  const fg = box.querySelector('#co-forget');
+  if (fg) fg.onclick = async () => { await coop.forget(); toast('Scollegato'); render(); };
+}
+
+function viewForecast() {
+  const months = forecastWorkMonths();
+  const sumsByMonth = {};
+  for (const ym of months) {
+    const mm = monthModel(ym);
+    if (mm.sums.length) sumsByMonth[ym] = mm.sums;
+  }
+  const fc = C.buildForecast(sumsByMonth, services(), store.data);
+  const cur = thisMonth();
+  const vis = fc.filter(m => m.mese >= shiftYM(cur, -2));
+  const tr = C.num(store.data.settings?.trattenutaCoop ?? 30);
+  let h = loadingLine() + coopLine();
+  h += `<div class="note info">Incasso = ultimo giorno del mese, secondo i giorni di pagamento di ogni service (in Service). Netto <b>✓</b> = cifra vera della cooperativa; <b>~</b> = stima con trattenuta ${tr}%. I rimborsi sono a parte.</div>`;
+  if (!vis.length) h += `<div class="card"><div class="empty"><b>Niente da mostrare</b>Non ci sono giornate nei mesi letti.</div></div>`;
+  for (const m of vis) {
+    const past = m.mese < cur;
+    h += `<h2 style="display:flex;justify-content:space-between;gap:8px"><span style="text-transform:capitalize">${esc(C.monthLabel(m.mese))}${m.mese === cur ? ' · questo mese' : ''}</span><span>${esc(C.eur(m.netto))}${m.rimborsi ? ` + ${esc(C.eur(m.rimborsi))} rimb.` : ''}</span></h2>
+      <div class="card">${m.righe.map(r => {
+        let badge;
+        if (r.coop?.pagata) badge = '<span class="badge good">pagata</span>';
+        else if (r.coop) badge = past ? '<span class="badge bad">non pagata</span>' : '<span class="badge">in attesa</span>';
+        else if (r.previste) badge = '<span class="badge">lavoro in corso</span>';
+        else badge = '<span class="badge warn">fattura da emettere</span>';
+        return `<div class="list-row">
+          <span class="sw" style="background:${colorOf(r.service)}"></span>
+          <span class="grow"><div><b>${esc(r.service.name)}</b> · <span style="text-transform:capitalize">lavoro ${esc(C.MESI[Number(r.ym.slice(5)) - 1])}</span></div>
+          <div class="muted">${r.giornate} gg · compensi ${esc(C.eur(r.compensi))}${r.rimborsiSeparati ? ` · rimborsi ${esc(C.eur(r.rimborsiSeparati))}` : ''} · ${r.giorni} gg${r.coop ? ` · fatt. ${esc(r.coop.numero)}` : ''}</div></span>
+          <span style="text-align:right"><div class="amt">${r.nettoReale ? '✓' : '~'} ${esc(C.eur(r.netto))}</div>${badge}</span></div>`;
+      }).join('')}</div>`;
+  }
+  return h;
+}
+
+function viewPayments() {
+  let h = coopLine();
+  const c = store.data.coop;
+  if (!c) return h;
+  const list = C.paymentsStatus(c, services(), todayISO());
+  const scadute = list.filter(f => f.stato === 'scaduta');
+  const attesa = list.filter(f => f.stato === 'attesa');
+  const pagate = list.filter(f => f.stato === 'pagata');
+  const tot = arr => arr.reduce((a, f) => a + (f.netto ?? (f.imponibile || 0) * (1 - C.num(store.data.settings?.trattenutaCoop ?? 30) / 100)), 0);
+  h += `<div class="card"><div class="kpis">
+      <div class="kpi"><div class="v" style="color:var(--bad)">${scadute.length}</div><div class="l">in ritardo · ~${esc(C.eur(tot(scadute)))}</div></div>
+      <div class="kpi"><div class="v">${attesa.length}</div><div class="l">in attesa · ~${esc(C.eur(tot(attesa)))}</div></div>
+      <div class="kpi"><div class="v" style="color:var(--ok)">${pagate.length}</div><div class="l">pagate</div></div>
+    </div></div>`;
+  const row = f => `<div class="list-row">
+      <span class="sw" style="background:${colorOf(f.service)}"></span>
+      <span class="grow"><div><b>${esc(f.service?.name || f.cliente)}</b> · n. ${esc(f.numero)} del ${esc(f.data.split('-').reverse().join('/'))}</div>
+      <div class="muted"><span style="text-transform:capitalize">lavoro ${esc(C.monthLabel(f.meseLavoro))}</span> · imponibile ${esc(C.eur(f.imponibile || 0))}${f.netto != null ? ` · netto ${esc(C.eur(f.netto))}` : ''} · scadenza ${esc(f.scadenza.split('-').reverse().join('/'))}</div></span>
+      <span>${f.stato === 'pagata' ? '<span class="badge good">pagata</span>' : f.stato === 'scaduta' ? `<span class="badge bad">${f.ritardo} gg di ritardo</span>` : '<span class="badge">in attesa</span>'}</span></div>`;
+  if (scadute.length) h += `<h2>In ritardo – da sollecitare (${scadute.length})</h2><div class="card">${scadute.map(row).join('')}</div>`;
+  if (attesa.length) h += `<h2>In attesa (${attesa.length})</h2><div class="card">${attesa.map(row).join('')}</div>`;
+  if (pagate.length) h += `<details class="more"><summary>Pagate (${pagate.length})</summary><div class="card">${pagate.map(row).join('')}</div></details>`;
+  return h;
+}
+
+function viewEnpals() {
+  let h = loadingLine() + coopLine();
+  const c = store.data.coop;
+  if (!c) return h;
+  const months = enpalsMonths();
+  const work = [];
+  for (const ym of months) work.push(...monthModel(ym).days);
+  const from = `${months[0]}-01`;
+  const r = C.enpalsCompare(work, c.eventi, from);
+  const today = todayISO();
+  const fut = r.mancanti.filter(d => d.date >= today);
+  const pas = r.mancanti.filter(d => d.date < today);
+  const line = d => `${C.dateLabel(d.date)} – ${d.serviceName || '?'}${d.place ? ' – ' + d.place : ''}`;
+  const mailText = `Buongiorno, vi chiedo di aprire le seguenti giornate:\n${fut.map(d => '- ' + line(d)).join('\n')}\n\nGrazie, Fernando`;
+  h += `<div class="card"><div class="kpis">
+      <div class="kpi"><div class="v">${r.lavorate}</div><div class="l">giornate in calendario</div></div>
+      <div class="kpi"><div class="v" style="color:var(--ok)">${r.ok}</div><div class="l">già aperte</div></div>
+      <div class="kpi"><div class="v" style="color:${r.mancanti.length ? 'var(--bad)' : 'var(--ok)'}">${r.mancanti.length}</div><div class="l">da far aprire</div></div>
+    </div></div>
+    <div class="note info">Confronto dal ${esc(from.split('-').reverse().join('/'))} in poi, tra le giornate di lavoro del calendario e quelle aperte dalla cooperativa ("I miei eventi").</div>`;
+  const rowW = d => `<button class="list-row" data-act="day-any" data-key="${esc(d.key)}" data-ym="${d.date.slice(0, 7)}"><span class="sw" style="background:${colorOf(svcById(d.serviceId))}"></span>
+    <span class="grow"><div><b>${esc(C.dateLabel(d.date))}</b> · ${esc(d.serviceName || '?')}${d.place ? ' · ' + esc(d.place) : ''}</div></span>${d.date >= today ? '<span class="badge">futura</span>' : '<span class="badge bad">passata</span>'}</button>`;
+  if (fut.length) h += `<h2>Da far aprire (${fut.length})</h2><div class="card">${fut.map(rowW).join('')}</div>
+    <div class="btn-row" style="margin-top:8px"><button class="btn primary" data-act="copy-enpals" data-text="${esc(mailText)}">Copia elenco per la mail</button></div>`;
+  if (pas.length) h += `<h2>Passate senza giornata aperta (${pas.length})</h2><div class="card">${pas.map(rowW).join('')}</div>`;
+  if (!r.mancanti.length) h += `<div class="card"><div class="empty"><b>Tutto a posto</b>Tutte le giornate di lavoro del calendario risultano aperte.</div></div>`;
+  if (r.inPiu.length) h += `<h2>Aperte ma non nel calendario (${r.inPiu.length})</h2><div class="card">${r.inPiu.map(e => `<div class="list-row"><span class="grow"><div><b>${esc(C.dateLabel(e.data))}</b> · ${esc(e.luogo)}</div><div class="muted">Controlla se manca l'evento sul calendario o se è un errore</div></span></div>`).join('')}</div>`;
+  return h;
 }
 
 // ---------- foglio dettaglio giornata ----------
@@ -688,6 +913,8 @@ function openService(id) {
       <label class="field g-ot"><span>Doppia dalla ora extra n°</span><input type="number" inputmode="numeric" id="s-dop" value="${esc(s.doppiaDa ?? '')}" placeholder="vuoto = mai"></label>
     </div>
     <small class="muted g-ot">Ogni ora iniziata oltre le ore incluse conta come un'ora intera. Le ore incluse comprendono la pausa pranzo.</small>
+    <label class="field"><span>Paga a giorni (dalla fine del mese di lavoro)</span><select id="s-pag">
+      ${[30, 60, 90, 120].map(g => `<option value="${g}" ${C.num(s.pagamentoGiorni || 30) === g ? 'selected' : ''}>${g} giorni – fine mese</option>`).join('')}</select></label>
     <h2>Dati per la fattura</h2>
     <label class="field"><span>Ragione sociale</span><input type="text" id="f-rs" value="${esc(f.ragioneSociale || '')}"></label>
     <label class="field"><span>Indirizzo</span><input type="text" id="f-ind" value="${esc(f.indirizzo || '')}"></label>
@@ -725,7 +952,7 @@ function openService(id) {
       saveService({
         ...s, name: v('#s-name'), colorId,
         keywords: v('#s-kw').split(',').map(x => x.trim()).filter(Boolean),
-        tipo: tipoSel.value, tariffa: C.num(v('#s-tar')),
+        tipo: tipoSel.value, tariffa: C.num(v('#s-tar')), pagamentoGiorni: C.num(v('#s-pag')),
         oreIncluse: v('#s-ore'), straordinario: v('#s-str'), doppiaDa: v('#s-dop'),
         fatturazione: { ragioneSociale: v('#f-rs'), indirizzo: v('#f-ind'), piva: v('#f-piva'), cf: v('#f-cf'), sdi: v('#f-sdi'), email: v('#f-mail') },
       });
@@ -741,7 +968,14 @@ function bind() {
     const b = e.target.closest('[data-act]');
     if (!b) return;
     const a = b.dataset.act;
-    if (a === 'tab') { ui.tab = b.dataset.id; render(); window.scrollTo(0, 0); return; }
+    if (a === 'tab') { ui.tab = b.dataset.id; ui.page = null; render(); window.scrollTo(0, 0); return; }
+    if (a === 'menu') return openMenu();
+    if (a === 'page-close') { ui.page = null; render(); return; }
+    if (a === 'coop-sync') { doCoopSync(true); return; }
+    if (a === 'copy-enpals') {
+      try { await copyText(b.dataset.text); toast('Elenco copiato: incollalo nella mail'); } catch (err) { toast('Non riuscito: ' + (err?.message || err)); }
+      return;
+    }
     if (a === 'prev' || a === 'next') {
       ui.ym = shiftYM(ui.ym, a === 'prev' ? -1 : 1); render();
       const c = cachedMonthEvents(ui.ym);
@@ -752,6 +986,7 @@ function bind() {
     if (a === 'sync' || a === 'sync-all') { fullSync(); render(); return; }
     if (a === 'day') return openDay(b.dataset.key);
     if (a === 'cell') return openCell(b.dataset.date);
+    if (a === 'day-any') { ui.ym = b.dataset.ym; return openDay(b.dataset.key); }
     if (a === 'view') { ui.view = b.dataset.id; lsSetStr('gf.view', ui.view); render(); return; }
     if (a === 'assign') return openAssign(b.dataset.ev);
     if (a === 'login') return doLogin();
@@ -792,10 +1027,13 @@ function bind() {
     const set = e.target.closest('[data-set]');
     if (set) {
       if (set.dataset.set === 'iva') setSettings({ iva: C.num(set.value) });
+      if (set.dataset.set === 'trattenutaCoop') setSettings({ trattenutaCoop: C.num(set.value) });
       if (set.dataset.set === 'ignora') setSettings({ ignora: set.value.split(',').map(x => x.trim()).filter(Boolean) });
       toast('Salvato');
     }
   };
+  const box = $app.querySelector('#coop-box');
+  if (box && coop) renderCoopBox(box);
   const det = $app.querySelector('details[data-act=others]');
   if (det) det.ontoggle = () => { ui.showOthers = det.open; };
 }
@@ -827,6 +1065,10 @@ if (store.meta.email && isConfigured()) {
   fullSync();
 }
 doCheckUpdate(false);
+if (coop && store.meta.email) {
+  const at = store.data.coop?.aggiornatoIl || 0;
+  if (Date.now() - at > 3 * 60 * 60 * 1000) setTimeout(() => doCoopSync(false), 4000);
+}
 // Rilegge il calendario quando torni sull'app (se è passato più di 1 minuto) e ogni 3 minuti mentre è aperta
 function refreshIfOld(maxAgeMs) {
   if (!store.meta.email || ui.loading || document.visibilityState !== 'visible') return;

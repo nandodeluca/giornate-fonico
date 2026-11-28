@@ -161,3 +161,11 @@ export async function saveTextFile(filename, content) {
 }
 
 export const APP_VERSION = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '0.0.0';
+
+// ---------- cooperativa (solo Windows) ----------
+export const coop = PLATFORM === 'windows' ? {
+  status: () => desktop.coopStatus(),
+  save: (user, pass) => desktop.coopSave(user, pass),
+  forget: () => desktop.coopForget(),
+  fetchPage: (which, da, a) => desktop.coopFetch(which, da, a),
+} : null;
